@@ -10,6 +10,7 @@ pub struct Bar {            // Initialises the interface for the bar
 
 #[derive(Debug, Clone)]
 pub struct Position {       // this is for the trading position
+    pub id: u64,
     pub entry_price: f64,
     pub lot_size: f64,
     pub is_long: bool,
