@@ -1,3 +1,4 @@
+
 use crate::types::{Position, Trade};
 
 pub struct Broker{
@@ -7,7 +8,7 @@ pub struct Broker{
 }
 
 impl Broker {
-    pub fn new(initial_cash: f64) -> self {     // does not need &mut because it initialises something new 
+    pub fn new(initial_cash: f64) -> Self {     // does not need &mut because it initialises something new 
         Broker {
             cash: initial_cash,
             positions: Vec::new(),
@@ -20,7 +21,7 @@ impl Broker {
             entry_price: price,
             lot_size,
             is_long: true,
-            entry_timestamp: timestamp
+            entry_timestamp: timestamp,
         });
     }
 
@@ -43,12 +44,12 @@ impl Broker {
             self.cash += pnl;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
-                exit_price: position.exit_price,
                 lot_size: position.lot_size,
                 is_long: position.is_long,
                 pnl,
                 entry_timestamp: position.entry_timestamp,
-                exit_timestamp: timestamp
+                exit_timestamp: timestamp,
+                exit_price: price
             });
         }
     }
