@@ -20,7 +20,7 @@ pub fn load_csv(path: &str) -> Vec<Bar> {
             volume:    cols[5].parse().expect("Bad volume"),
         };
 
-        bars.push(bar);
+        bars.push(bar); // pushes each bar from the csv to an element in Bar 
 
     }
 
