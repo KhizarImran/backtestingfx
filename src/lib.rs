@@ -3,3 +3,4 @@ pub mod strategy;
 pub mod broker;
 pub mod engine;
 pub mod data;
+pub mod stats;

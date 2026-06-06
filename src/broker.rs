@@ -4,32 +4,41 @@ use crate::types::{Position, Trade};
 pub struct Broker{
     pub cash: f64,
     pub positions: Vec<Position>,
-    pub trade_history: Vec<Trade>
+    pub trade_history: Vec<Trade>,
+    pub commission: f64,
+    pub spread: f64
 }
 
 impl Broker {
-    pub fn new(initial_cash: f64) -> Self {     // does not need &mut because it initialises something new 
+    pub fn new(initial_cash: f64, commission: f64, spread: f64) -> Self {     // does not need &mut because it initialises something new 
         Broker {
             cash: initial_cash,
             positions: Vec::new(),
-            trade_history: Vec::new()
+            trade_history: Vec::new(),
+            commission,
+            spread
         }
     }
 
     pub fn buy(&mut self, price: f64, lot_size: f64, timestamp: i64) {      // needs to modify the broker with new position. (.push works with the Vec::)
+        let fill_price = price + self.spread; // buy at ask 
+        self.cash -= self.commission * lot_size; // pay commission
+
         self.positions.push(Position {
-            id: 0,
-            entry_price: price,
+            id: self.positions.len() as u64,
+            entry_price: fill_price,
             lot_size,
             is_long: true,
             entry_timestamp: timestamp,
         });
     }
 
-    pub fn sell(&mut self, price: f64, lot_size: f64, timestamp: i64) {     // needs to modify the broker with new position. (.push works with the Vec::)
+    pub fn sell(&mut self, price: f64, lot_size: f64, timestamp: i64) {  
+        let fill_price = price - self.spread; // buy at ask 
+        self.cash -= self.commission * lot_size; // pay commission   // needs to modify the broker with new position. (.push works with the Vec::)
         self.positions.push(Position {
             id : 0,
-            entry_price: price,
+            entry_price: fill_price,
             lot_size,
             is_long: false,
             entry_timestamp: timestamp

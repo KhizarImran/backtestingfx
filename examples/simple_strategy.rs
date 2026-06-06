@@ -3,6 +3,8 @@ use backtestingfx::broker::Broker;
 use backtestingfx::strategy::Strategy;
 use backtestingfx::engine::Engine;
 use backtestingfx::data::load_csv;
+use backtestingfx::stats::Stats;
+
 
 struct BuyEveryBar;
 
@@ -15,13 +17,13 @@ impl Strategy for BuyEveryBar {
 
 fn main() {
     let data = load_csv("examples/data/eurusd_lse_1h.csv");
-    let mut engine = Engine::new(data, 10000.0);
+    let mut engine = Engine::new(data, 10_000.0, 0.0, 0.00010);
     let mut strategy = BuyEveryBar;
 
     engine.run(&mut strategy); // main line that runs the strategy 
 
-    println!("Final cash: {}", engine.broker.cash);
-    println!("Trades executed: {}", engine.broker.trade_history.len());
+    let stats = Stats::compute(&engine.broker, 10_000.0);
+    println!("{}", stats);
 }
 
 

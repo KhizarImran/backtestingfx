@@ -8,10 +8,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(data: Vec<Bar>, initial_cash: f64) -> Self {
+    pub fn new(data: Vec<Bar>, initial_cash: f64, commission: f64, spread: f64) -> Self {
         Engine {
             data,
-            broker : Broker::new(initial_cash) // it takes initial cash and not Broker as Engine is responsible for broker not the user 
+            broker : Broker::new(initial_cash, commission, spread) // it takes initial cash and not Broker as Engine is responsible for broker not the user 
         }
     }
 
