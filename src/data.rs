@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use crate::types::Bar;
+use chrono::DateTime;
 
 pub fn load_csv(path: &str) -> Vec<Bar> {
     let file = File::open(path).expect("Could not open file");
@@ -11,8 +12,10 @@ pub fn load_csv(path: &str) -> Vec<Bar> {
         let line = line.expect("could not read line");
         let cols: Vec<&str> = line.split(',').collect();
 
+        let dt = DateTime::parse_from_rfc3339(cols[0]).expect("Bad Timestamp"); // this handles the timestamp to be in 2024-01-01 00:00:00 kind of way 
+
         let bar = Bar {
-            timestamp: cols[0].parse().expect("Bad timestamp"),
+            timestamp: dt.timestamp(),
             open:      cols[1].parse().expect("Bad open"),
             high:      cols[2].parse().expect("Bad high"),
             low:       cols[3].parse().expect("Bad low"),
