@@ -59,9 +59,9 @@ impl Broker {
             };
             
             let pnl = if position.is_long {
-                (price - position.entry_price) * position.lot_size
+                (close_price - position.entry_price) * position.lot_size
             } else {
-                (position.entry_price - price) * position.lot_size
+                (position.entry_price - close_price) * position.lot_size
             };
 
             self.cash += pnl;
@@ -87,9 +87,9 @@ impl Broker {
             };
 
             let pnl = if position.is_long {
-                (price - position.entry_price) * position.lot_size
+                (close_price - position.entry_price) * position.lot_size
             } else {
-                (position.entry_price - price) * position.lot_size
+                (position.entry_price - close_price) * position.lot_size
             };
             self.cash += pnl;
             self.trade_history.push(Trade {
