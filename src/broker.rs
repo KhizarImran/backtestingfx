@@ -51,6 +51,13 @@ impl Broker {
         if let Some(index) = self.positions.iter().position(|p| p.id == id) {
             let position = self.positions.remove(index);
 
+            
+            let close_price = if position.is_long {
+                price - self.spread // sell at the bif whilst closing
+            } else {
+                price + self.spread
+            };
+            
             let pnl = if position.is_long {
                 (price - position.entry_price) * position.lot_size
             } else {
@@ -65,13 +72,20 @@ impl Broker {
                 pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
-                exit_price: price
+                exit_price: close_price
             });            
         }
     }
 
     pub fn close_all (&mut self, price:f64, timestamp: i64) {       // Instead of .push it uses drain to calculate the close all positions
         for position in self.positions.drain(..) {
+
+            let close_price = if position.is_long {
+                price - self.spread // sell at the bif whilst closing
+            } else {
+                price + self.spread
+            };
+
             let pnl = if position.is_long {
                 (price - position.entry_price) * position.lot_size
             } else {
@@ -85,7 +99,7 @@ impl Broker {
                 pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
-                exit_price: price
+                exit_price: close_price
             });
         }
     }
