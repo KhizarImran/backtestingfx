@@ -14,7 +14,10 @@ pub struct Position {       // this is for the trading position
     pub entry_price: f64,
     pub lot_size: f64,
     pub is_long: bool,
-    pub entry_timestamp: i64
+    pub entry_timestamp: i64,
+    pub stop_loss: Option<f64>,
+    pub take_profit: Option<f64>
+
 }
 
 #[derive(Debug, Clone)]

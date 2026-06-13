@@ -21,6 +21,7 @@ impl Engine {
     pub fn run (&mut self, strategy: &mut dyn Strategy) -> Stats {
         strategy.init(&self.data);
         for bar in &self.data {
+            self.broker.check_sl_tp(bar);
             strategy.next(bar, &mut self.broker);
             self.equity_curve.push(self.broker.equity(bar.close));
         }

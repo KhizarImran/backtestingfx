@@ -10,7 +10,7 @@ struct BuyEveryBar;
 impl Strategy for BuyEveryBar {
     fn next (&mut self, bar: &Bar, broker: &mut Broker) {
         broker.close_all(bar.close, bar.timestamp); //closes any open positions
-        broker.buy(bar.close, 1.0, bar.timestamp); // can be more complicated with buy, sells, close position, close all etc.
+        broker.buy(bar.close, 1.0, bar.timestamp, None, None); // can be more complicated with buy, sells, close position, close all etc.
     }
 }
 
