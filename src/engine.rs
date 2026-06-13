@@ -25,6 +25,9 @@ impl Engine {
             strategy.next(bar, &mut self.broker);
             self.equity_curve.push(self.broker.equity(bar.close));
         }
+        if let Some(last_bar) = self.data.last() {
+            self.broker.close_all(last_bar.close, last_bar.timestamp);
+        }
         Stats::compute(&self.broker, &self.equity_curve)
     }
 }
