@@ -3,5 +3,10 @@ name = "backtestingfx"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "backtestingfx"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 chrono = "0.4"
+pyo3 = { version = "0.28", features = ["extension-module"]}
