@@ -18,6 +18,14 @@ pub struct Bar {
     pub volume: f64,
 }
 
+#[pymethods]
+impl Bar {
+    #[new]
+    pub fn new(timestamp: i64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> Self {
+        Bar { timestamp, open, high, low, close, volume }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Position {
     // this is for the trading position
