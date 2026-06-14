@@ -1,5 +1,6 @@
 /target
 Cargo.lock
-### My claude md file 
+### My claude md file
 CLAUDE.md
-*/data/
+data/
+.env
