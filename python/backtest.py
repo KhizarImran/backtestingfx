@@ -1,8 +1,15 @@
-import backtestingfx as _rust
+from typing import Any
+
+import backtestingfx as _rust  # type: ignore
 import pandas as pd
 
 
 class Strategy:
+    def __init__(self):
+        self._bars: Any = None
+        self._bar: Any = None
+        self._broker: Any = None
+
     def init(self):
         pass
 
@@ -10,10 +17,14 @@ class Strategy:
         pass
 
     def buy(self, lot_size, stop_loss=None, take_profit=None):
-        self._broker.buy(self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit)
+        self._broker.buy(
+            self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit
+        )
 
     def sell(self, lot_size, stop_loss=None, take_profit=None):
-        self._broker.sell(self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit)
+        self._broker.sell(
+            self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit
+        )
 
     def close_all(self):
         self._broker.close_all(self._bar.close, self._bar.timestamp)
@@ -27,7 +38,7 @@ class _Adapter:
         self._strategy = strategy
 
     def init(self, bars):
-        self._strategy.bars = bars
+        self._strategy._bars = bars
         self._strategy.init()
 
     def next(self, bar, broker):
@@ -50,20 +61,22 @@ class Backtest:
             if isinstance(idx, pd.Timestamp):
                 ts = int(idx.timestamp())
             else:
-                ts = int(pd.Timestamp(row["timestamp"]).timestamp())
+                ts = int(pd.Timestamp(row["timestamp"]).timestamp())  # type: ignore
 
-            bars.append(_rust.Bar(
-                timestamp=ts,
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                volume=float(row.get("volume", 0.0))
-            ))
+            bars.append(
+                _rust.Bar(  # type: ignore
+                    timestamp=ts,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row.get("volume", 0.0)),
+                )
+            )
         return bars
 
     def run(self):
         bars = self._to_bars()
-        engine = _rust.Engine(bars, self._cash, self._commission, self._spread)
+        engine = _rust.Engine(bars, self._cash, self._commission, self._spread)  # type: ignore
         strategy = self._strategy_class()
         return engine.run(_Adapter(strategy))

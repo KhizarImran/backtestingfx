@@ -1,18 +1,18 @@
-use pyo3::prelude::*;
-use crate::types::Bar;
 use crate::broker::Broker;
-use crate::strategy::Strategy;
 use crate::stats::Stats;
+use crate::strategy::Strategy;
+use crate::types::Bar;
+use pyo3::prelude::*;
 
 #[pyclass]
 pub struct Engine {
     pub data: Vec<Bar>,
     pub broker: Broker,
-    pub equity_curve: Vec<f64>
+    pub equity_curve: Vec<f64>,
 }
 
 impl Engine {
-    pub fn run (&mut self, strategy: &mut dyn Strategy) -> Stats {
+    pub fn run(&mut self, strategy: &mut dyn Strategy) -> Stats {
         strategy.init(&self.data);
         for bar in &self.data {
             self.broker.check_sl_tp(bar);
@@ -33,7 +33,7 @@ impl Engine {
         Engine {
             data,
             broker: Broker::new(initial_cash, commission, spread),
-            equity_curve: Vec::new()
+            equity_curve: Vec::new(),
         }
     }
 
@@ -48,18 +48,23 @@ impl Engine {
             }
         }
 
-        let broker_py = Py::new(py, Broker::new(
-            self.broker.initial_cash,
-            self.broker.commission,
-            self.broker.spread,
-        ))?;
+        let broker_py = Py::new(
+            py,
+            Broker::new(
+                self.broker.initial_cash,
+                self.broker.commission,
+                self.broker.spread,
+            ),
+        )?;
 
         for bar in &self.data {
             {
                 let mut b = broker_py.borrow_mut(py);
                 b.check_sl_tp(bar);
             }
-            strategy.bind(py).call_method("next", (bar.clone(), broker_py.clone_ref(py)), None)?;
+            strategy
+                .bind(py)
+                .call_method("next", (bar.clone(), broker_py.clone_ref(py)), None)?;
             let equity = broker_py.borrow(py).equity(bar.close);
             self.equity_curve.push(equity);
         }
