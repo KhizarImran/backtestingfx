@@ -1,15 +1,16 @@
-
+use crate::types::{Bar, Position, Trade};
 use pyo3::prelude::*;
-use crate::types::{Position, Trade, Bar};
 
 #[pyclass]
-pub struct Broker{
+pub struct Broker {
     pub cash: f64,
     pub initial_cash: f64,
     pub positions: Vec<Position>,
     pub trade_history: Vec<Trade>,
     pub commission: f64,
-    pub spread: f64
+    pub spread: f64,
+    pub contract_size: f64,
+    pub quote_to_account: f64,
 }
 
 // Rust-internal only, not exposed to Python
@@ -19,18 +20,26 @@ impl Broker {
         while i < self.positions.len() {
             let fill = {
                 let p = &self.positions[i];
-                if p.is_long{
+                if p.is_long {
                     let sl_hit = p.stop_loss.map_or(false, |sl| bar.low <= sl);
                     let tp_hit = p.take_profit.map_or(false, |tp| bar.high >= tp);
-                    if sl_hit {p.stop_loss}
-                    else if tp_hit {p.take_profit}
-                    else {None}
+                    if sl_hit {
+                        p.stop_loss
+                    } else if tp_hit {
+                        p.take_profit
+                    } else {
+                        None
+                    }
                 } else {
                     let sl_hit = p.stop_loss.map_or(false, |sl| bar.high >= sl);
                     let tp_hit = p.take_profit.map_or(false, |tp| bar.low <= tp);
-                    if sl_hit {p.stop_loss}
-                    else if tp_hit {p.take_profit}
-                    else {None}
+                    if sl_hit {
+                        p.stop_loss
+                    } else if tp_hit {
+                        p.take_profit
+                    } else {
+                        None
+                    }
                 }
             };
 
@@ -43,9 +52,15 @@ impl Broker {
                 };
 
                 let pnl = if position.is_long {
-                    (close_price - position.entry_price) * position.lot_size
+                    (close_price - position.entry_price)
+                        * position.lot_size
+                        * self.contract_size
+                        * self.quote_to_account
                 } else {
-                    (position.entry_price - close_price) * position.lot_size
+                    (position.entry_price - close_price)
+                        * position.lot_size
+                        * self.contract_size
+                        * self.quote_to_account
                 };
                 self.cash += pnl;
                 self.trade_history.push(Trade {
@@ -55,10 +70,10 @@ impl Broker {
                     is_long: position.is_long,
                     pnl,
                     entry_timestamp: position.entry_timestamp,
-                    exit_timestamp: bar.timestamp
+                    exit_timestamp: bar.timestamp,
                 });
             } else {
-                i+=1;
+                i += 1;
             }
         }
     }
@@ -67,18 +82,33 @@ impl Broker {
 #[pymethods]
 impl Broker {
     #[new]
-    pub fn new(initial_cash: f64, commission: f64, spread: f64) -> Self {
+    pub fn new(
+        initial_cash: f64,
+        commission: f64,
+        spread: f64,
+        contract_size: f64,
+        quote_to_account: f64,
+    ) -> Self {
         Broker {
             cash: initial_cash,
             initial_cash,
             positions: Vec::new(),
             trade_history: Vec::new(),
             commission,
-            spread
+            spread,
+            contract_size,
+            quote_to_account,
         }
     }
 
-    pub fn buy(&mut self, price: f64, lot_size: f64, timestamp: i64, stop_loss: Option<f64>, take_profit: Option<f64>) {
+    pub fn buy(
+        &mut self,
+        price: f64,
+        lot_size: f64,
+        timestamp: i64,
+        stop_loss: Option<f64>,
+        take_profit: Option<f64>,
+    ) {
         let fill_price = price + self.spread;
         self.cash -= self.commission * lot_size;
         self.positions.push(Position {
@@ -88,11 +118,18 @@ impl Broker {
             is_long: true,
             entry_timestamp: timestamp,
             stop_loss,
-            take_profit
+            take_profit,
         });
     }
 
-    pub fn sell(&mut self, price: f64, lot_size: f64, timestamp: i64, stop_loss: Option<f64>, take_profit: Option<f64>) {
+    pub fn sell(
+        &mut self,
+        price: f64,
+        lot_size: f64,
+        timestamp: i64,
+        stop_loss: Option<f64>,
+        take_profit: Option<f64>,
+    ) {
         let fill_price = price - self.spread;
         self.cash -= self.commission * lot_size;
         self.positions.push(Position {
@@ -102,7 +139,7 @@ impl Broker {
             is_long: false,
             entry_timestamp: timestamp,
             stop_loss,
-            take_profit
+            take_profit,
         });
     }
 
@@ -117,9 +154,15 @@ impl Broker {
             };
 
             let pnl = if position.is_long {
-                (close_price - position.entry_price) * position.lot_size
+                (close_price - position.entry_price)
+                    * position.lot_size
+                    * self.contract_size
+                    * self.quote_to_account
             } else {
-                (position.entry_price - close_price) * position.lot_size
+                (position.entry_price - close_price)
+                    * position.lot_size
+                    * self.contract_size
+                    * self.quote_to_account
             };
 
             self.cash += pnl;
@@ -130,7 +173,7 @@ impl Broker {
                 pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
-                exit_price: close_price
+                exit_price: close_price,
             });
         }
     }
@@ -144,9 +187,15 @@ impl Broker {
             };
 
             let pnl = if position.is_long {
-                (close_price - position.entry_price) * position.lot_size
+                (close_price - position.entry_price)
+                    * position.lot_size
+                    * self.contract_size
+                    * self.quote_to_account
             } else {
-                (position.entry_price - close_price) * position.lot_size
+                (position.entry_price - close_price)
+                    * position.lot_size
+                    * self.contract_size
+                    * self.quote_to_account
             };
             self.cash += pnl;
             self.trade_history.push(Trade {
@@ -156,19 +205,29 @@ impl Broker {
                 pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
-                exit_price: close_price
+                exit_price: close_price,
             });
         }
     }
 
     pub fn equity(&self, current_price: f64) -> f64 {
-        let unrealized: f64 = self.positions.iter().map(|p| {
-            if p.is_long {
-                (current_price - p.entry_price) * p.lot_size
-            } else {
-                (p.entry_price - current_price) * p.lot_size
-            }
-        }).sum();
+        let unrealized: f64 = self
+            .positions
+            .iter()
+            .map(|p| {
+                if p.is_long {
+                    (current_price - p.entry_price)
+                        * p.lot_size
+                        * self.contract_size
+                        * self.quote_to_account
+                } else {
+                    (p.entry_price - current_price)
+                        * p.lot_size
+                        * self.contract_size
+                        * self.quote_to_account
+                }
+            })
+            .sum();
 
         self.cash + unrealized
     }

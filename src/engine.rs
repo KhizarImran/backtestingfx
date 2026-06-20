@@ -29,10 +29,23 @@ impl Engine {
 #[pymethods]
 impl Engine {
     #[new]
-    pub fn new(data: Vec<Bar>, initial_cash: f64, commission: f64, spread: f64) -> Self {
+    pub fn new(
+        data: Vec<Bar>,
+        initial_cash: f64,
+        commission: f64,
+        spread: f64,
+        contract_size: f64,
+        quote_to_account: f64,
+    ) -> Self {
         Engine {
             data,
-            broker: Broker::new(initial_cash, commission, spread),
+            broker: Broker::new(
+                initial_cash,
+                commission,
+                spread,
+                contract_size,
+                quote_to_account,
+            ),
             equity_curve: Vec::new(),
         }
     }
@@ -54,6 +67,8 @@ impl Engine {
                 self.broker.initial_cash,
                 self.broker.commission,
                 self.broker.spread,
+                self.broker.contract_size,
+                self.broker.quote_to_account,
             ),
         )?;
 

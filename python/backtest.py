@@ -48,12 +48,23 @@ class _Adapter:
 
 
 class Backtest:
-    def __init__(self, df, strategy_class, cash=10000.0, commission=0.0, spread=0.0):
+    def __init__(
+        self,
+        df,
+        strategy_class,
+        cash=10000.0,
+        commission=0.0,
+        spread=0.0,
+        contract_size=100000.0,
+        quote_to_account=1.0,
+    ):
         self._df = df
         self._strategy_class = strategy_class
         self._cash = cash
         self._commission = commission
         self._spread = spread
+        self._contract_size = contract_size
+        self._quote_to_account = quote_to_account
 
     def _to_bars(self):
         bars = []
@@ -77,6 +88,13 @@ class Backtest:
 
     def run(self):
         bars = self._to_bars()
-        engine = _rust.Engine(bars, self._cash, self._commission, self._spread)  # type: ignore
+        engine = _rust.Engine(  # type: ignore
+            bars,
+            self._cash,
+            self._commission,
+            self._spread,
+            self._contract_size,
+            self._quote_to_account,
+        )
         strategy = self._strategy_class()
         return engine.run(_Adapter(strategy))
