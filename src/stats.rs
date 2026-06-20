@@ -45,6 +45,13 @@ fn max_drawdown(equity_curve: &[f64]) -> f64 {
     max_dd
 }
 
+#[pymethods]
+impl Stats {
+    fn __repr__(&self) -> String {
+        format!("{}", self)
+    }
+}
+
 impl Stats {
     pub fn compute(broker: &Broker, equity_curve: &[f64]) -> Self {
         let num_trades = broker.trade_history.len();

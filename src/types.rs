@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Bar {
     // Initialises the interface for the bar
@@ -22,7 +22,14 @@ pub struct Bar {
 impl Bar {
     #[new]
     pub fn new(timestamp: i64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> Self {
-        Bar { timestamp, open, high, low, close, volume }
+        Bar {
+            timestamp,
+            open,
+            high,
+            low,
+            close,
+            volume,
+        }
     }
 }
 
