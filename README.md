@@ -1,5 +1,7 @@
 # backtestingfx
 
+[![PyPI](https://img.shields.io/pypi/v/backtestingfx)](https://pypi.org/project/backtestingfx/)
+
 A Rust-powered FX backtesting library for Python. Write your strategy in Python, let Rust handle the heavy lifting.
 
 Inspired by [backtesting.py](https://kernc.github.io/backtesting.py/) but built specifically for forex — lot sizes, pip-based PnL, stop loss, take profit, and realistic account currency conversion.
