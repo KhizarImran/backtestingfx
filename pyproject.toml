@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "backtestingfx"
+version = "0.1.0"
+description = "FX backtesting library built in Rust"
+requires-python = ">=3.9"
+dependencies = ["pandas"]
+
+[tool.maturin]
+module-name = "backtestingfx._backtestingfx"
+features = ["pyo3/extension-module"]

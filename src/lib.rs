@@ -8,6 +8,7 @@ pub mod types;
 use pyo3::prelude::*;
 
 #[pymodule]
+#[pyo3(name = "_backtestingfx")]
 fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::Bar>()?;
     m.add_class::<stats::Stats>()?;
