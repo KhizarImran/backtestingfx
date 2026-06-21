@@ -10,3 +10,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 chrono = "0.4"
 pyo3 = { version = "0.28", features = ["extension-module"]}
+csv = "1"
