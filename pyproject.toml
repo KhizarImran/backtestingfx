@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "FX backtesting library built in Rust"
 requires-python = ">=3.9"
 dependencies = ["pandas"]
+license = { text = "MIT" }
+readme = "README.md"
 
 [tool.maturin]
 module-name = "backtestingfx._backtestingfx"
 features = ["pyo3/extension-module"]
+
+[project.urls]
+Repository = "https://github.com/KhizarImran/backtestingfx"
