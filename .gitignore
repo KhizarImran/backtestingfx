@@ -1,5 +1,6 @@
 /target
 Cargo.lock
+*.so
 ### My claude md file
 CLAUDE.md
 data/
