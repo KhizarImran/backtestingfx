@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 pub struct Broker {
     pub cash: f64,
     pub initial_cash: f64,
+    next_id: u64,
     pub positions: Vec<Position>,
     pub trade_history: Vec<Trade>,
     pub commission: f64,
@@ -62,7 +63,7 @@ impl Broker {
                         * self.contract_size
                         * self.quote_to_account
                 };
-                self.cash += pnl;
+                self.cash += pnl - self.commission * position.lot_size;
                 self.trade_history.push(Trade {
                     entry_price: position.entry_price,
                     exit_price: close_price,
@@ -92,6 +93,7 @@ impl Broker {
         Broker {
             cash: initial_cash,
             initial_cash,
+            next_id: 0,
             positions: Vec::new(),
             trade_history: Vec::new(),
             commission,
@@ -111,8 +113,10 @@ impl Broker {
     ) {
         let fill_price = price + self.spread;
         self.cash -= self.commission * lot_size;
+        let id = self.next_id;
+        self.next_id += 1;
         self.positions.push(Position {
-            id: self.positions.len() as u64,
+            id,
             entry_price: fill_price,
             lot_size,
             is_long: true,
@@ -132,8 +136,10 @@ impl Broker {
     ) {
         let fill_price = price - self.spread;
         self.cash -= self.commission * lot_size;
+        let id = self.next_id;
+        self.next_id += 1;
         self.positions.push(Position {
-            id: self.positions.len() as u64,
+            id,
             entry_price: fill_price,
             lot_size,
             is_long: false,
@@ -165,7 +171,7 @@ impl Broker {
                     * self.quote_to_account
             };
 
-            self.cash += pnl;
+            self.cash += pnl - self.commission * position.lot_size;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
@@ -197,7 +203,7 @@ impl Broker {
                     * self.contract_size
                     * self.quote_to_account
             };
-            self.cash += pnl;
+            self.cash += pnl - self.commission * position.lot_size;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
