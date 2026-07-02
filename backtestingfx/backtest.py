@@ -10,6 +10,10 @@ class Strategy:
         self._bar: Any = None
         self._broker: Any = None
 
+    @property
+    def positions(self):
+        return self._broker.positions() if self._broker else []
+
     def init(self):
         pass
 

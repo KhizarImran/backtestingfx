@@ -14,5 +14,6 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stats::Stats>()?;
     m.add_class::<broker::Broker>()?;
     m.add_class::<engine::Engine>()?;
+    m.add_class::<types::Position>()?;
     Ok(())
 }

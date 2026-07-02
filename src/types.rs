@@ -33,15 +33,23 @@ impl Bar {
     }
 }
 
+#[pyclass]
 #[derive(Debug, Clone)]
 pub struct Position {
     // this is for the trading position
+    #[pyo3(get)]
     pub id: u64,
+    #[pyo3(get)]
     pub entry_price: f64,
+    #[pyo3(get)]
     pub lot_size: f64,
+    #[pyo3(get)]
     pub is_long: bool,
+    #[pyo3(get)]
     pub entry_timestamp: i64,
+    #[pyo3(get)]
     pub stop_loss: Option<f64>,
+    #[pyo3(get)]
     pub take_profit: Option<f64>,
 }
 

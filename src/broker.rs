@@ -103,6 +103,10 @@ impl Broker {
         }
     }
 
+    pub fn positions(&self) -> Vec<Position> {
+        self.positions.clone()
+    }
+
     pub fn buy(
         &mut self,
         price: f64,
