@@ -91,6 +91,11 @@ class Backtest:
         self._quote_to_account = quote_to_account
 
     def _to_bars(self):
+        required = {"open", "high", "low", "close"}
+        missing = required - set(self._df.columns.str.lower())
+        if missing:
+            raise ValueError(f"DataFrame missing required columns: {sorted(missing)}")
+
         bars = []
         for idx, row in self._df.iterrows():
             if isinstance(idx, pd.Timestamp):

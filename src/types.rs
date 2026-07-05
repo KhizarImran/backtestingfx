@@ -53,6 +53,19 @@ pub struct Position {
     pub take_profit: Option<f64>,
 }
 
+#[pymethods]
+impl Position {
+    fn __repr__(&self) -> String {
+        format!(
+            "Position(id={}, {} {:.2} lots @ {:.5})",
+            self.id,
+            if self.is_long { "LONG" } else { "SHORT" },
+            self.lot_size,
+            self.entry_price,
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Trade {
     // the actual trade
