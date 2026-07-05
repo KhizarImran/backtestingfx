@@ -9,10 +9,27 @@ class Strategy:
         self._bars: Any = None
         self._bar: Any = None
         self._broker: Any = None
+        self._index: int = 0
 
     @property
     def positions(self):
         return self._broker.positions() if self._broker else []
+
+    @property
+    def data(self):
+        return self._bars[: self._index + 1] if self._bars else []
+
+    @property
+    def index(self):
+        return self._index
+
+    @property
+    def cash(self):
+        return self._broker.cash if self._broker else 0.0
+
+    @property
+    def equity(self):
+        return self._broker.equity(self._bar.close) if self._broker else 0.0
 
     def init(self):
         pass
@@ -40,6 +57,7 @@ class Strategy:
 class _Adapter:
     def __init__(self, strategy):
         self._strategy = strategy
+        self._index = 0
 
     def init(self, bars):
         self._strategy._bars = bars
@@ -48,6 +66,8 @@ class _Adapter:
     def next(self, bar, broker):
         self._strategy._bar = bar
         self._strategy._broker = broker
+        self._strategy._index = self._index
+        self._index += 1
         self._strategy.next()
 
 

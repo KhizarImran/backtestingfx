@@ -33,7 +33,7 @@ impl Bar {
     }
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Position {
     // this is for the trading position

@@ -54,12 +54,7 @@ impl Engine {
     pub fn run_py(&mut self, py: Python<'_>, strategy: Py<PyAny>) -> PyResult<Stats> {
         self.equity_curve.clear();
 
-        let init_result = strategy.bind(py).call_method1("init", (self.data.clone(),));
-        if let Err(e) = init_result {
-            if !e.is_instance_of::<pyo3::exceptions::PyAttributeError>(py) {
-                return Err(e);
-            }
-        }
+        strategy.bind(py).call_method1("init", (self.data.clone(),))?;
 
         let broker_py = Py::new(
             py,

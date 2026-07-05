@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass]
 pub struct Broker {
+    #[pyo3(get)]
     pub cash: f64,
     pub initial_cash: f64,
     next_id: u64,
@@ -63,13 +64,14 @@ impl Broker {
                         * self.contract_size
                         * self.quote_to_account
                 };
-                self.cash += pnl - self.commission * position.lot_size;
+                let net_pnl = pnl - self.commission * position.lot_size;
+                self.cash += net_pnl;
                 self.trade_history.push(Trade {
                     entry_price: position.entry_price,
                     exit_price: close_price,
                     lot_size: position.lot_size,
                     is_long: position.is_long,
-                    pnl,
+                    pnl: net_pnl,
                     entry_timestamp: position.entry_timestamp,
                     exit_timestamp: bar.timestamp,
                 });
@@ -175,12 +177,13 @@ impl Broker {
                     * self.quote_to_account
             };
 
-            self.cash += pnl - self.commission * position.lot_size;
+            let net_pnl = pnl - self.commission * position.lot_size;
+            self.cash += net_pnl;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
                 is_long: position.is_long,
-                pnl,
+                pnl: net_pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
                 exit_price: close_price,
@@ -207,12 +210,13 @@ impl Broker {
                     * self.contract_size
                     * self.quote_to_account
             };
-            self.cash += pnl - self.commission * position.lot_size;
+            let net_pnl = pnl - self.commission * position.lot_size;
+            self.cash += net_pnl;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
                 is_long: position.is_long,
-                pnl,
+                pnl: net_pnl,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
                 exit_price: close_price,

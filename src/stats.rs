@@ -25,6 +25,24 @@ pub struct Stats {
     pub profit_factor: f64,
     #[pyo3(get)]
     pub max_drawdown_pct: f64,
+    #[pyo3(get)]
+    pub sharpe_ratio: f64,
+}
+
+fn sharpe_ratio(equity_curve: &[f64]) -> f64 {
+    if equity_curve.len() < 2 {
+        return 0.0;
+    }
+    let returns: Vec<f64> = equity_curve
+        .windows(2)
+        .map(|w| (w[1] - w[0]) / w[0])
+        .collect();
+    let mean = returns.iter().sum::<f64>() / returns.len() as f64;
+    let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / returns.len() as f64;
+    if variance == 0.0 {
+        return 0.0;
+    }
+    mean / variance.sqrt()
 }
 
 fn max_drawdown(equity_curve: &[f64]) -> f64 {
@@ -101,6 +119,7 @@ impl Stats {
             f64::INFINITY
         };
         let max_drawdown_pct = max_drawdown(equity_curve);
+        let sharpe_ratio = sharpe_ratio(equity_curve);
 
         Stats {
             initial_cash,
@@ -114,6 +133,7 @@ impl Stats {
             worst_trade: if num_trades > 0 { worst_trade } else { 0.0 },
             profit_factor,
             max_drawdown_pct,
+            sharpe_ratio,
         }
     }
 }
@@ -132,7 +152,8 @@ impl std::fmt::Display for Stats {
                Best Trade:     {:.5}\n\
                Worst Trade:    {:.5}\n\
                Profit Factor:  {:.2}\n\
-               Max Drawdown:   {:.2}%",
+               Max Drawdown:   {:.2}%\n\
+               Sharpe Ratio:   {:.4} (unannualized)",
             self.initial_cash,
             self.final_cash,
             self.total_return_pct,
@@ -142,7 +163,8 @@ impl std::fmt::Display for Stats {
             self.best_trade,
             self.worst_trade,
             self.profit_factor,
-            self.max_drawdown_pct
+            self.max_drawdown_pct,
+            self.sharpe_ratio
         )
     }
 }
