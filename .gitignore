@@ -1,6 +1,7 @@
 /target
 Cargo.lock
 *.so
+__pycache__/
 ### My claude md file
 CLAUDE.md
 data/
