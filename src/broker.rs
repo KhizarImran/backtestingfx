@@ -317,6 +317,33 @@ mod tests {
     }
 
     #[test]
+    fn short_position_closes_at_stop_loss() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.sell(1.1000, 1.0, 0, Some(1.1050), None);
+
+        // stop loss sits above entry for a short; bar's high pokes through it
+        let bar = Bar::new(1, 1.1020, 1.1080, 1.1010, 1.1030, 0.0);
+        broker.check_sl_tp(&bar);
+
+        assert_eq!(broker.positions.len(), 0);
+        assert_eq!(broker.trade_history[0].exit_price, 1.1050);
+    }
+
+    #[test]
+    fn close_position_closes_only_the_matching_id() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, None, None); // id 0
+        broker.buy(1.2000, 1.0, 0, None, None); // id 1
+
+        broker.close_position(0, 1.1050, 1);
+
+        assert_eq!(broker.positions.len(), 1);
+        assert_eq!(broker.positions[0].id, 1); // id 1 left untouched
+        assert_eq!(broker.trade_history.len(), 1);
+        assert_close(broker.trade_history[0].pnl, 500.0); // (1.1050 - 1.1000) * 1.0 * 100_000
+    }
+
+    #[test]
     fn equity_includes_unrealized_pnl() {
         let mut broker = test_broker(0.0, 0.0);
         broker.buy(1.1000, 1.0, 0, None, None);
