@@ -246,3 +246,82 @@ impl Broker {
         self.cash + unrealized
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_broker(commission: f64, spread: f64) -> Broker {
+        Broker::new(10_000.0, commission, spread, 100_000.0, 1.0)
+    }
+
+    // f64 arithmetic isn't exact, so compare with a tolerance instead of assert_eq!
+    fn assert_close(a: f64, b: f64) {
+        assert!((a - b).abs() < 1e-6, "expected {b}, got {a}");
+    }
+
+    #[test]
+    fn buy_then_close_all_computes_pnl() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, None, None);
+        broker.close_all(1.1050, 1);
+
+        // (exit - entry) * lot_size * contract_size = (1.1050 - 1.1000) * 1.0 * 100_000 = 500.0
+        assert_close(broker.cash, 10_000.0 + 500.0);
+        assert_eq!(broker.trade_history.len(), 1);
+        assert_close(broker.trade_history[0].pnl, 500.0);
+    }
+
+    #[test]
+    fn sell_then_close_all_computes_pnl() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.sell(1.1000, 1.0, 0, None, None);
+        broker.close_all(1.0950, 1);
+
+        // short profits when price falls: (entry - exit) * lot_size * contract_size = 500.0
+        assert_close(broker.cash, 10_000.0 + 500.0);
+    }
+
+    #[test]
+    fn commission_deducted_on_open_and_close() {
+        let mut broker = test_broker(7.0, 0.0); // $7 per lot
+        broker.buy(1.1000, 1.0, 0, None, None);
+        assert_eq!(broker.cash, 10_000.0 - 7.0); // charged immediately on open
+
+        broker.close_all(1.1000, 1); // same price as entry, so zero price PnL
+        assert_eq!(broker.cash, 10_000.0 - 7.0 - 7.0); // commission charged again on close
+    }
+
+    #[test]
+    fn long_position_closes_at_stop_loss_not_bar_close() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, Some(1.0950), None);
+
+        // bar's low dips through the stop, but closes well above it
+        let bar = Bar::new(1, 1.1100, 1.1100, 1.0900, 1.1080, 0.0);
+        broker.check_sl_tp(&bar);
+
+        assert_eq!(broker.positions.len(), 0);
+        assert_eq!(broker.trade_history[0].exit_price, 1.0950); // filled at SL, not bar.close
+    }
+
+    #[test]
+    fn long_position_stays_open_when_sl_tp_not_hit() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, Some(1.0950), Some(1.1200));
+
+        let bar = Bar::new(1, 1.1020, 1.1050, 1.1010, 1.1030, 0.0); // stays inside range
+        broker.check_sl_tp(&bar);
+
+        assert_eq!(broker.positions.len(), 1);
+    }
+
+    #[test]
+    fn equity_includes_unrealized_pnl() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, None, None);
+
+        // price moved up 50 pips, position still open (not closed)
+        assert_close(broker.equity(1.1050), 10_000.0 + 500.0);
+    }
+}
