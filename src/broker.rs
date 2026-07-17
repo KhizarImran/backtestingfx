@@ -64,14 +64,14 @@ impl Broker {
                         * self.contract_size
                         * self.quote_to_account
                 };
-                let net_pnl = pnl - self.commission * position.lot_size;
-                self.cash += net_pnl;
+                let commission = self.commission * position.lot_size;
+                self.cash += pnl - commission;
                 self.trade_history.push(Trade {
                     entry_price: position.entry_price,
                     exit_price: close_price,
                     lot_size: position.lot_size,
                     is_long: position.is_long,
-                    pnl: net_pnl,
+                    pnl: pnl - commission * 2.0,
                     entry_timestamp: position.entry_timestamp,
                     exit_timestamp: bar.timestamp,
                 });
@@ -177,13 +177,13 @@ impl Broker {
                     * self.quote_to_account
             };
 
-            let net_pnl = pnl - self.commission * position.lot_size;
-            self.cash += net_pnl;
+            let commission = self.commission * position.lot_size;
+            self.cash += pnl - commission;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
                 is_long: position.is_long,
-                pnl: net_pnl,
+                pnl: pnl - commission * 2.0,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
                 exit_price: close_price,
@@ -210,13 +210,13 @@ impl Broker {
                     * self.contract_size
                     * self.quote_to_account
             };
-            let net_pnl = pnl - self.commission * position.lot_size;
-            self.cash += net_pnl;
+            let commission = self.commission * position.lot_size;
+            self.cash += pnl - commission;
             self.trade_history.push(Trade {
                 entry_price: position.entry_price,
                 lot_size: position.lot_size,
                 is_long: position.is_long,
-                pnl: net_pnl,
+                pnl: pnl - commission * 2.0,
                 entry_timestamp: position.entry_timestamp,
                 exit_timestamp: timestamp,
                 exit_price: close_price,
@@ -290,6 +290,11 @@ mod tests {
 
         broker.close_all(1.1000, 1); // same price as entry, so zero price PnL
         assert_eq!(broker.cash, 10_000.0 - 7.0 - 7.0); // commission charged again on close
+        assert_eq!(broker.trade_history[0].pnl, -14.0);
+        assert_close(
+            broker.cash - broker.initial_cash,
+            broker.trade_history.iter().map(|trade| trade.pnl).sum(),
+        );
     }
 
     #[test]
