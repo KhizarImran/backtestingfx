@@ -30,6 +30,35 @@ impl Engine {
     }
 }
 
+// ponytail: benchmark-only native strategy, mirrors examples/compare_bt.py SmaCrossFx.
+// Exists so we can time the pure-Rust engine path (no per-bar Python call) against run_py.
+struct SmaCross {
+    fast: usize,
+    slow: usize,
+    lot_size: f64,
+    closes: Vec<f64>,
+}
+
+impl Strategy for SmaCross {
+    fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+        self.closes.push(bar.close);
+        if self.closes.len() <= self.slow {
+            return;
+        }
+        let n = self.closes.len();
+        let fast_sma: f64 = self.closes[n - self.fast..].iter().sum::<f64>() / self.fast as f64;
+        let slow_sma: f64 = self.closes[n - self.slow..].iter().sum::<f64>() / self.slow as f64;
+
+        if broker.positions.is_empty() {
+            if fast_sma > slow_sma {
+                broker.buy(bar.close, self.lot_size, bar.timestamp, None, None);
+            }
+        } else if fast_sma < slow_sma {
+            broker.close_all(bar.close, bar.timestamp);
+        }
+    }
+}
+
 #[pymethods]
 impl Engine {
     #[new]
@@ -94,6 +123,17 @@ impl Engine {
 
         let b = broker_py.borrow(py);
         Ok(Stats::compute(&b, &self.equity_curve))
+    }
+
+    // ponytail: benchmark hook, runs the SMA strategy entirely in Rust via the native run() path.
+    pub fn run_native_sma(&mut self, fast: usize, slow: usize, lot_size: f64) -> Stats {
+        let mut strat = SmaCross {
+            fast,
+            slow,
+            lot_size,
+            closes: Vec::new(),
+        };
+        self.run(&mut strat)
     }
 }
 
