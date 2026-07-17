@@ -13,6 +13,9 @@ pub struct Engine {
 
 impl Engine {
     pub fn run(&mut self, strategy: &mut dyn Strategy) -> Stats {
+        self.equity_curve.clear();
+        self.equity_curve.push(self.broker.initial_cash);
+
         strategy.init(&self.data);
         for bar in &self.data {
             self.broker.check_sl_tp(bar);
@@ -21,6 +24,7 @@ impl Engine {
         }
         if let Some(last_bar) = self.data.last() {
             self.broker.close_all(last_bar.close, last_bar.timestamp);
+            *self.equity_curve.last_mut().unwrap() = self.broker.cash;
         }
         Stats::compute(&self.broker, &self.equity_curve)
     }
@@ -53,8 +57,11 @@ impl Engine {
     #[pyo3(name = "run")]
     pub fn run_py(&mut self, py: Python<'_>, strategy: Py<PyAny>) -> PyResult<Stats> {
         self.equity_curve.clear();
+        self.equity_curve.push(self.broker.initial_cash);
 
-        strategy.bind(py).call_method1("init", (self.data.clone(),))?;
+        strategy
+            .bind(py)
+            .call_method1("init", (self.data.clone(),))?;
 
         let broker_py = Py::new(
             py,
@@ -82,9 +89,35 @@ impl Engine {
         if let Some(last_bar) = self.data.last() {
             let mut b = broker_py.borrow_mut(py);
             b.close_all(last_bar.close, last_bar.timestamp);
+            *self.equity_curve.last_mut().unwrap() = b.cash;
         }
 
         let b = broker_py.borrow(py);
         Ok(Stats::compute(&b, &self.equity_curve))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct BuyAndHold;
+
+    impl Strategy for BuyAndHold {
+        fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+            broker.buy(bar.close, 1.0, bar.timestamp, None, None);
+        }
+    }
+
+    #[test]
+    fn equity_curve_includes_initial_cash_and_final_liquidation() {
+        let data = vec![Bar::new(0, 1.1000, 1.1000, 1.1000, 1.1000, 0.0)];
+        let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0, 100_000.0, 1.0);
+
+        let stats = engine.run(&mut BuyAndHold);
+
+        assert_eq!(engine.equity_curve, vec![10_000.0, 9_986.0]);
+        assert_eq!(stats.final_cash, 9_986.0);
+        assert_eq!(engine.equity_curve.last(), Some(&stats.final_cash));
     }
 }
