@@ -43,6 +43,24 @@ Profit Factor:  0.94
 Max Drawdown:   3.21%
 ```
 
+### Interactive HTML report
+
+Install the optional report dependency and generate a self-contained HTML file:
+
+```bash
+pip install "backtestingfx[report]"
+```
+
+```python
+bt = Backtest(df, MyCrossStrategy, cash=10000.0, spread=0.0001)
+stats = bt.run()
+bt.plot("strategy-report.html")
+```
+
+The report includes candlesticks, trade entries and exits, equity, drawdown,
+trade diagnostics, and a complete trade ledger. Plotly is embedded in the file,
+so the report works offline without a server.
+
 ## Installation
 
 ```
@@ -140,6 +158,9 @@ bt = Backtest(df, MyStrategy, cash=10000.0, spread=0.00015, quote_to_account=1.2
 | `worst_trade` | Worst single trade PnL in USD |
 | `profit_factor` | Gross profit / gross loss |
 | `max_drawdown_pct` | Maximum drawdown as a percentage |
+| `sharpe_ratio` | Unannualized Sharpe ratio |
+| `equity_curve` | Account equity from initial cash through final liquidation |
+| `trades` | Completed trades with entry, exit, size, direction, and net PnL |
 
 ## Data Format
 

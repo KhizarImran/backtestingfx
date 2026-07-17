@@ -89,15 +89,17 @@ class Backtest:
         self._spread = spread
         self._contract_size = contract_size
         self._quote_to_account = quote_to_account
+        self._stats = None
+        self._report_df = None
 
-    def _to_bars(self):
+    def _to_bars(self, df):
         required = {"open", "high", "low", "close"}
-        missing = required - set(self._df.columns.str.lower())
+        missing = required - set(df.columns.str.lower())
         if missing:
             raise ValueError(f"DataFrame missing required columns: {sorted(missing)}")
 
         bars = []
-        for idx, row in self._df.iterrows():
+        for idx, row in df.iterrows():
             if isinstance(idx, pd.Timestamp):
                 ts = int(idx.timestamp())
             else:
@@ -116,7 +118,10 @@ class Backtest:
         return bars
 
     def run(self):
-        bars = self._to_bars()
+        self._stats = None
+        self._report_df = None
+        report_df = self._df.copy(deep=True)
+        bars = self._to_bars(report_df)
         engine = _rust.Engine(  # type: ignore
             bars,
             self._cash,
@@ -126,4 +131,24 @@ class Backtest:
             self._quote_to_account,
         )
         strategy = self._strategy_class()
-        return engine.run(_Adapter(strategy))
+        self._stats = engine.run(_Adapter(strategy))
+        self._report_df = report_df
+        return self._stats
+
+    def plot(self, filename="backtest.html", open_browser=True):
+        if self._stats is None:
+            raise RuntimeError("Run the backtest before plotting it")
+
+        from backtestingfx.plotting import render_report
+
+        return render_report(
+            self._report_df,
+            self._stats,
+            strategy_name=self._strategy_class.__name__,
+            filename=filename,
+            open_browser=open_browser,
+            commission=self._commission,
+            spread=self._spread,
+            contract_size=self._contract_size,
+            quote_to_account=self._quote_to_account,
+        )

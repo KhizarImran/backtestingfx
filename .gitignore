@@ -6,3 +6,6 @@ __pycache__/
 CLAUDE.md
 data/
 .env
+.venv/
+uv.lock
+/backtestingfx-report.html

@@ -66,14 +66,22 @@ impl Position {
     }
 }
 
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Trade {
     // the actual trade
+    #[pyo3(get)]
     pub entry_price: f64,
+    #[pyo3(get)]
     pub exit_price: f64,
+    #[pyo3(get)]
     pub lot_size: f64,
+    #[pyo3(get)]
     pub is_long: bool,
+    #[pyo3(get)]
     pub pnl: f64,
+    #[pyo3(get)]
     pub entry_timestamp: i64,
+    #[pyo3(get)]
     pub exit_timestamp: i64,
 }

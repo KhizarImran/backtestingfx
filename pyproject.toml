@@ -11,6 +11,9 @@ dependencies = ["pandas"]
 license = { text = "MIT" }
 readme = "README.md"
 
+[project.optional-dependencies]
+report = ["plotly>=5"]
+
 [tool.maturin]
 module-name = "backtestingfx._backtestingfx"
 features = ["pyo3/extension-module"]

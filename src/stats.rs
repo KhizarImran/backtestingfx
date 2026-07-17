@@ -1,4 +1,5 @@
 use crate::broker::Broker;
+use crate::types::Trade;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -27,6 +28,10 @@ pub struct Stats {
     pub max_drawdown_pct: f64,
     #[pyo3(get)]
     pub sharpe_ratio: f64,
+    #[pyo3(get)]
+    pub equity_curve: Vec<f64>,
+    #[pyo3(get)]
+    pub trades: Vec<Trade>,
 }
 
 fn sharpe_ratio(equity_curve: &[f64]) -> f64 {
@@ -134,6 +139,8 @@ impl Stats {
             profit_factor,
             max_drawdown_pct,
             sharpe_ratio,
+            equity_curve: equity_curve.to_vec(),
+            trades: broker.trade_history.clone(),
         }
     }
 }
