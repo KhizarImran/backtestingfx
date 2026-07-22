@@ -5,6 +5,21 @@ import unittest
 import pandas as pd
 
 from backtestingfx import Backtest, Strategy
+from backtestingfx.backtest import _DataView
+
+
+class DataViewTest(unittest.TestCase):
+    def test_window_hides_future_bars_and_slices_correctly(self):
+        view = _DataView(["a", "b", "c", "d"])
+        view._len = 3  # only the first 3 bars are "visible" so far
+
+        self.assertEqual(len(view), 3)
+        self.assertEqual(view[-1], "c")  # last visible, not "d"
+        self.assertEqual(view[0], "a")
+        self.assertEqual(view[-2:], ["b", "c"])  # trailing slice, no "d"
+        self.assertEqual(list(view), ["a", "b", "c"])
+        with self.assertRaises(IndexError):
+            view[3]  # "d" is in the future, not addressable yet
 
 
 class BuyAndHold(Strategy):

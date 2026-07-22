@@ -4,12 +4,39 @@ from backtestingfx import _backtestingfx as _rust  # type: ignore
 import pandas as pd
 
 
+class _DataView:
+    # ponytail: a window over the full bars list, visible up to the current bar.
+    # Slicing copies only the requested slice, not the growing prefix — this is
+    # what keeps data access O(1) per bar instead of O(n) (was O(n^2) overall).
+    __slots__ = ("_bars", "_len")
+
+    def __init__(self, bars):
+        self._bars = bars
+        self._len = 0
+
+    def __len__(self):
+        return self._len
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return [self._bars[k] for k in range(*i.indices(self._len))]
+        if i < 0:
+            i += self._len
+        if not 0 <= i < self._len:
+            raise IndexError("bar index out of range")
+        return self._bars[i]
+
+    def __iter__(self):
+        return (self._bars[k] for k in range(self._len))
+
+
 class Strategy:
     def __init__(self):
         self._bars: Any = None
         self._bar: Any = None
         self._broker: Any = None
         self._index: int = 0
+        self._data_view: Any = None
 
     @property
     def positions(self):
@@ -17,7 +44,12 @@ class Strategy:
 
     @property
     def data(self):
-        return self._bars[: self._index + 1] if self._bars else []
+        if not self._bars:
+            return []
+        if self._data_view is None:
+            self._data_view = _DataView(self._bars)
+        self._data_view._len = self._index + 1
+        return self._data_view
 
     @property
     def index(self):
