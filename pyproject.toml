@@ -7,7 +7,7 @@ name = "backtestingfx"
 version = "0.1.1"
 description = "FX backtesting library built in Rust"
 requires-python = ">=3.9"
-dependencies = ["pandas"]
+dependencies = ["pandas", "numpy"]
 license = { text = "MIT" }
 readme = "README.md"
 

@@ -1,6 +1,7 @@
 pub mod broker;
 pub mod data;
 pub mod engine;
+pub mod optimise;
 pub mod stats;
 pub mod strategy;
 pub mod types;
@@ -16,5 +17,6 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<engine::Engine>()?;
     m.add_class::<types::Position>()?;
     m.add_class::<types::Trade>()?;
+    m.add_function(wrap_pyfunction!(optimise::run_grid, m)?)?;
     Ok(())
 }

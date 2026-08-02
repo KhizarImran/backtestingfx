@@ -76,5 +76,71 @@ class BacktestTest(unittest.TestCase):
             self.assertIn("2026-01-01 01:00", contents)
 
 
+def rising_market(bars=20):
+    closes = [1.1000 + 0.0010 * i for i in range(bars)]
+    return pd.DataFrame(
+        {"open": closes, "high": closes, "low": closes, "close": closes},
+        index=pd.date_range("2026-01-01", periods=bars, freq="h", tz="UTC"),
+    )
+
+
+class OptimizeTest(unittest.TestCase):
+    def test_grid_runs_every_combo_and_ranks_by_metric(self):
+        def hold_lots(df, lots):
+            return [lots] * len(df)
+
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        results = backtest.optimize(hold_lots, lots=[0.1, 0.5, 1.0])
+
+        self.assertEqual(len(results), 3)
+        # price only rises, so the biggest long wins and ranking is strictly descending
+        self.assertEqual([params["lots"] for params, _ in results], [1.0, 0.5, 0.1])
+        returns = [stats.total_return_pct for _, stats in results]
+        self.assertEqual(returns, sorted(returns, reverse=True))
+
+    def test_grid_is_the_cartesian_product_and_matches_a_single_run(self):
+        def hold_lots(df, lots, unused):
+            return [lots] * len(df)
+
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        results = backtest.optimize(hold_lots, lots=[0.1, 0.2], unused=["a", "b"])
+        self.assertEqual(len(results), 4)
+
+        # a parallel grid run must agree with the same signal run on its own
+        alone = backtest.optimize(hold_lots, lots=[0.2], unused=["a"])
+        matching = [s for p, s in results if p == {"lots": 0.2, "unused": "a"}]
+        self.assertEqual(matching[0].final_cash, alone[0][1].final_cash)
+
+    def test_maximize_picks_the_named_field(self):
+        def hold_lots(df, lots):
+            return [lots] * len(df)
+
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        results = backtest.optimize(hold_lots, maximize="max_drawdown_pct", lots=[0.1, 1.0])
+
+        self.assertEqual(
+            [stats.max_drawdown_pct for _, stats in results],
+            sorted([stats.max_drawdown_pct for _, stats in results], reverse=True),
+        )
+
+    def test_nan_signal_is_rejected_rather_than_silently_held(self):
+        def leaky_warmup(df, lots):
+            return [float("nan")] + [lots] * (len(df) - 1)
+
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        with self.assertRaisesRegex(ValueError, "NaN"):
+            backtest.optimize(leaky_warmup, lots=[0.1])
+
+    def test_wrong_length_signal_is_rejected(self):
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        with self.assertRaisesRegex(ValueError, "one per bar"):
+            backtest.optimize(lambda df, lots: [lots] * 3, lots=[0.1])
+
+    def test_empty_grid_is_rejected(self):
+        backtest = Backtest(rising_market(), cash=10_000.0)
+        with self.assertRaises(ValueError):
+            backtest.optimize(lambda df: [])
+
+
 if __name__ == "__main__":
     unittest.main()

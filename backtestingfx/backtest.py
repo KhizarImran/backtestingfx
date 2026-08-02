@@ -1,6 +1,8 @@
+import itertools
 from typing import Any
 
 from backtestingfx import _backtestingfx as _rust  # type: ignore
+import numpy as np
 import pandas as pd
 
 
@@ -107,7 +109,7 @@ class Backtest:
     def __init__(
         self,
         df,
-        strategy_class,
+        strategy_class=None,  # optional: optimize() uses a signal function instead
         cash=10000.0,
         commission=0.0,
         spread=0.0,
@@ -149,23 +151,67 @@ class Backtest:
             )
         return bars
 
-    def run(self):
-        self._stats = None
-        self._report_df = None
-        report_df = self._df.copy(deep=True)
-        bars = self._to_bars(report_df)
-        engine = _rust.Engine(  # type: ignore
-            bars,
+    def _engine(self, df):
+        return _rust.Engine(  # type: ignore
+            self._to_bars(df),
             self._cash,
             self._commission,
             self._spread,
             self._contract_size,
             self._quote_to_account,
         )
+
+    def run(self):
+        if self._strategy_class is None:
+            raise ValueError("Backtest needs a strategy_class to run(); use optimize() for signal functions")
+
+        self._stats = None
+        self._report_df = None
+        report_df = self._df.copy(deep=True)
+        engine = self._engine(report_df)
         strategy = self._strategy_class()
         self._stats = engine.run(_Adapter(strategy))
         self._report_df = report_df
         return self._stats
+
+    def optimize(self, signal_fn, maximize="total_return_pct", **grid):
+        """Grid-search `signal_fn` over the given parameter ranges. Best result first.
+
+        `signal_fn(df, **params)` is called once per combination and returns one target
+        lot size per bar: positive for long, negative for short, 0.0 for flat. Write it
+        vectorised (pandas/numpy) — it runs in Python, but only once per combination,
+        never per bar. The simulations themselves run in parallel Rust threads.
+
+        Returns a list of `(params, stats)` sorted by the named Stats field, so
+        `results[0]` is the best run. Sort it yourself to minimise something instead.
+        """
+        if not grid:
+            raise ValueError("optimize needs at least one parameter range")
+
+        names = list(grid)
+        combos = [dict(zip(names, values)) for values in itertools.product(*grid.values())]
+
+        signals = []
+        for combo in combos:
+            signal = np.asarray(signal_fn(self._df, **combo), dtype=float)
+            if np.isnan(signal).any():
+                raise ValueError(
+                    f"signal_fn returned NaN for {combo} — indicator warmup should "
+                    "produce 0.0 (flat), not NaN"
+                )
+            # ponytail: tolist() is the cheap bridge into Rust. It costs one Python
+            # float per bar per combo; swap in the `numpy` crate for a zero-copy
+            # PyReadonlyArray1 if this ever shows up in a profile.
+            signals.append(signal.tolist())
+
+        engine = self._engine(self._df)
+        results = _rust.run_grid(engine, signals)  # type: ignore
+
+        return sorted(
+            zip(combos, results),
+            key=lambda pair: getattr(pair[1], maximize),
+            reverse=True,
+        )
 
     def plot(self, filename="backtest.html", open_browser=True):
         if self._stats is None:

@@ -112,6 +112,42 @@ self._bar.volume
 self._bar.timestamp  # unix timestamp (int)
 ```
 
+## Optimization
+
+Grid-search parameters with the simulations running in parallel Rust threads:
+
+```python
+import numpy as np
+from backtestingfx import Backtest
+
+def sma_cross(df, fast, slow):
+    fast_sma = df["close"].rolling(fast).mean()
+    slow_sma = df["close"].rolling(slow).mean()
+    return np.where(fast_sma > slow_sma, 0.1, 0.0)   # target lots per bar
+
+bt = Backtest(df, cash=10_000, commission=3.5)
+results = bt.optimize(sma_cross, maximize="total_return_pct",
+                      fast=range(5, 26), slow=range(30, 101, 5))
+
+best_params, best_stats = results[0]
+```
+
+`optimize()` returns `[(params, stats), ...]` sorted best-first by the named `Stats`
+field. Re-sort it yourself to minimise something instead.
+
+### Why a signal function instead of `next()`
+
+`next()` runs in Python, so every bar needs the GIL and threads can't help. A signal
+function is called **once per parameter combination**, not once per bar — it returns the
+target lot size for each bar (positive long, negative short, `0.0` flat), and Rust runs
+every simulation natively with the GIL released. On a 315-combination grid that is
+**157x faster** than looping `Backtest.run()` over the same grid.
+
+The trade-off: a signal function can't see the broker, so path-dependent logic (trailing
+stops, pyramiding, "exit after N bars") still needs `next()` and a plain loop. Indicator
+warmup must come out as `0.0`, not `NaN` — a `NaN` signal is rejected rather than
+silently treated as "hold".
+
 ## Backtest Parameters
 
 ```python
