@@ -23,8 +23,8 @@ impl Broker {
             let fill = {
                 let p = &self.positions[i];
                 if p.is_long {
-                    let sl_hit = p.stop_loss.map_or(false, |sl| bar.low <= sl);
-                    let tp_hit = p.take_profit.map_or(false, |tp| bar.high >= tp);
+                    let sl_hit = p.stop_loss.is_some_and(|sl| bar.low <= sl);
+                    let tp_hit = p.take_profit.is_some_and(|tp| bar.high >= tp);
                     if sl_hit {
                         p.stop_loss
                     } else if tp_hit {
@@ -33,8 +33,8 @@ impl Broker {
                         None
                     }
                 } else {
-                    let sl_hit = p.stop_loss.map_or(false, |sl| bar.high >= sl);
-                    let tp_hit = p.take_profit.map_or(false, |tp| bar.low <= tp);
+                    let sl_hit = p.stop_loss.is_some_and(|sl| bar.high >= sl);
+                    let tp_hit = p.take_profit.is_some_and(|tp| bar.low <= tp);
                     if sl_hit {
                         p.stop_loss
                     } else if tp_hit {
