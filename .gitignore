@@ -4,7 +4,8 @@ Cargo.lock
 __pycache__/
 ### My claude md file
 CLAUDE.md
-data/
+data/*
+!data/EURUSD_1H.csv
 .env
 .venv/
 uv.lock
