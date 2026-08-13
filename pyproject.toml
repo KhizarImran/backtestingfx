@@ -18,5 +18,8 @@ report = ["plotly>=5"]
 module-name = "backtestingfx._backtestingfx"
 features = ["pyo3/extension-module"]
 
+[tool.maturin.generate-ci.github]
+trusted-publishing = true
+
 [project.urls]
 Repository = "https://github.com/KhizarImran/backtestingfx"
