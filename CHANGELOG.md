@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.2] - 2026-08-13
 
 ### Added
 - `Backtest.optimize()` — parallel grid search over a vectorised signal function.
@@ -9,9 +9,14 @@
 - `strategy_class` is now optional, so `Backtest(df, cash=...)` works for optimization
 - Standalone HTML reports (`Backtest.plot()`) and `examples/html_report.py`
 - Three-way speed benchmark against backtesting.py (`examples/benchmark.py`)
+- Sample EURUSD hourly data is now in the repo, so the examples run on a fresh clone
 
 ### Fixed
 - Data access inside `next()` is O(1) per bar instead of O(n) — ~2.6x faster
+
+### Changed
+- `numpy` is now a direct dependency (it was already pulled in by pandas)
+- CI runs `cargo clippy -- -D warnings` in place of `cargo check`
 
 ## [0.1.1] - 2026-07-05
 
