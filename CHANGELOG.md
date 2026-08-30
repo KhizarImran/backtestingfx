@@ -1,6 +1,10 @@
 # Changelog
 
-## [0.1.3] - 2026-08-30
+## [0.2.0] - 2026-08-30
+
+First release to reach PyPI since 0.1.1 — the `v0.1.2` tag predated the release
+workflow, so 0.1.2 was tagged but never published. Everything listed under 0.1.2
+below ships here too.
 
 ### Added
 - `Strategy.update_sl(id, stop_loss)` — move the stop on an open position in place,
