@@ -17,6 +17,39 @@ pub struct Broker {
 
 // Rust-internal only, not exposed to Python
 impl Broker {
+    // Closing a position, part of a position, or a whole book all do the same four things:
+    // work out the fill price, work out the PnL, charge commission, record the Trade.
+    // `lots` is how much of the position to close, so a partial close is the same code
+    // with a smaller number.
+    fn settle(&mut self, position: &Position, lots: f64, price: f64, timestamp: i64) {
+        let close_price = if position.is_long {
+            price - self.spread
+        } else {
+            price + self.spread
+        };
+
+        let pnl = if position.is_long {
+            (close_price - position.entry_price) * lots * self.contract_size * self.quote_to_account
+        } else {
+            (position.entry_price - close_price) * lots * self.contract_size * self.quote_to_account
+        };
+
+        // entry commission was already taken out of cash when the position opened,
+        // so cash only pays the exit leg here — but the Trade records both, because
+        // a trade's PnL should be what the round trip actually cost.
+        let commission = self.commission * lots;
+        self.cash += pnl - commission;
+        self.trade_history.push(Trade {
+            entry_price: position.entry_price,
+            exit_price: close_price,
+            lot_size: lots,
+            is_long: position.is_long,
+            pnl: pnl - commission * 2.0,
+            entry_timestamp: position.entry_timestamp,
+            exit_timestamp: timestamp,
+        });
+    }
+
     pub fn check_sl_tp(&mut self, bar: &Bar) {
         let mut i = 0;
         while i < self.positions.len() {
@@ -47,34 +80,7 @@ impl Broker {
 
             if let Some(fill_price) = fill {
                 let position = self.positions.remove(i);
-                let close_price = if position.is_long {
-                    fill_price - self.spread
-                } else {
-                    fill_price + self.spread
-                };
-
-                let pnl = if position.is_long {
-                    (close_price - position.entry_price)
-                        * position.lot_size
-                        * self.contract_size
-                        * self.quote_to_account
-                } else {
-                    (position.entry_price - close_price)
-                        * position.lot_size
-                        * self.contract_size
-                        * self.quote_to_account
-                };
-                let commission = self.commission * position.lot_size;
-                self.cash += pnl - commission;
-                self.trade_history.push(Trade {
-                    entry_price: position.entry_price,
-                    exit_price: close_price,
-                    lot_size: position.lot_size,
-                    is_long: position.is_long,
-                    pnl: pnl - commission * 2.0,
-                    entry_timestamp: position.entry_timestamp,
-                    exit_timestamp: bar.timestamp,
-                });
+                self.settle(&position, position.lot_size, fill_price, bar.timestamp);
             } else {
                 i += 1;
             }
@@ -158,69 +164,57 @@ impl Broker {
     pub fn close_position(&mut self, id: u64, price: f64, timestamp: i64) {
         if let Some(index) = self.positions.iter().position(|p| p.id == id) {
             let position = self.positions.remove(index);
+            self.settle(&position, position.lot_size, price, timestamp);
+        }
+    }
 
-            let close_price = if position.is_long {
-                price - self.spread
-            } else {
-                price + self.spread
-            };
+    /// Close part of a position, leaving the rest open. Scaling out of a winner.
+    ///
+    /// Asking for at least the full size just closes it outright, so callers don't
+    /// have to check the remaining size before every call.
+    pub fn close_partial(&mut self, id: u64, lot_size: f64, price: f64, timestamp: i64) {
+        if lot_size <= 0.0 {
+            return; // closing zero (or negative) lots would book PnL out of thin air
+        }
+        let Some(index) = self.positions.iter().position(|p| p.id == id) else {
+            return;
+        };
 
-            let pnl = if position.is_long {
-                (close_price - position.entry_price)
-                    * position.lot_size
-                    * self.contract_size
-                    * self.quote_to_account
-            } else {
-                (position.entry_price - close_price)
-                    * position.lot_size
-                    * self.contract_size
-                    * self.quote_to_account
-            };
+        if lot_size >= self.positions[index].lot_size {
+            let position = self.positions.remove(index);
+            self.settle(&position, position.lot_size, price, timestamp);
+            return;
+        }
 
-            let commission = self.commission * position.lot_size;
-            self.cash += pnl - commission;
-            self.trade_history.push(Trade {
-                entry_price: position.entry_price,
-                lot_size: position.lot_size,
-                is_long: position.is_long,
-                pnl: pnl - commission * 2.0,
-                entry_timestamp: position.entry_timestamp,
-                exit_timestamp: timestamp,
-                exit_price: close_price,
-            });
+        // Clone first: settle needs &mut self, so it can't also hold a borrow into
+        // self.positions. A Position is seven numbers, the copy costs nothing.
+        let position = self.positions[index].clone();
+        self.positions[index].lot_size -= lot_size;
+        self.settle(&position, lot_size, price, timestamp);
+    }
+
+    /// Move a position's stop loss. This is how a trailing stop works: the strategy
+    /// calls it each bar as price advances, instead of closing and reopening (which
+    /// would pay spread and commission all over again).
+    ///
+    /// No check that the stop only moves in the profitable direction — widening a stop
+    /// is a legitimate thing to do, so that call belongs to the strategy. Returns false
+    /// if no position has that id.
+    pub fn update_sl(&mut self, id: u64, stop_loss: f64) -> bool {
+        match self.positions.iter_mut().find(|p| p.id == id) {
+            Some(position) => {
+                position.stop_loss = Some(stop_loss);
+                true
+            }
+            None => false,
         }
     }
 
     pub fn close_all(&mut self, price: f64, timestamp: i64) {
-        for position in self.positions.drain(..) {
-            let close_price = if position.is_long {
-                price - self.spread
-            } else {
-                price + self.spread
-            };
-
-            let pnl = if position.is_long {
-                (close_price - position.entry_price)
-                    * position.lot_size
-                    * self.contract_size
-                    * self.quote_to_account
-            } else {
-                (position.entry_price - close_price)
-                    * position.lot_size
-                    * self.contract_size
-                    * self.quote_to_account
-            };
-            let commission = self.commission * position.lot_size;
-            self.cash += pnl - commission;
-            self.trade_history.push(Trade {
-                entry_price: position.entry_price,
-                lot_size: position.lot_size,
-                is_long: position.is_long,
-                pnl: pnl - commission * 2.0,
-                entry_timestamp: position.entry_timestamp,
-                exit_timestamp: timestamp,
-                exit_price: close_price,
-            });
+        // take() hands us the Vec by value, so settle is free to borrow self mutably.
+        // drain() would still be holding a borrow on self.positions here.
+        for position in std::mem::take(&mut self.positions) {
+            self.settle(&position, position.lot_size, price, timestamp);
         }
     }
 
@@ -346,6 +340,107 @@ mod tests {
         assert_eq!(broker.positions[0].id, 1); // id 1 left untouched
         assert_eq!(broker.trade_history.len(), 1);
         assert_close(broker.trade_history[0].pnl, 500.0); // (1.1050 - 1.1000) * 1.0 * 100_000
+    }
+
+    #[test]
+    fn close_partial_books_half_and_leaves_the_rest_open() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, None, None);
+
+        broker.close_partial(0, 0.4, 1.1050, 1);
+
+        // 0.4 lots booked: (1.1050 - 1.1000) * 0.4 * 100_000 = 200.0
+        assert_close(broker.cash, 10_000.0 + 200.0);
+        assert_eq!(broker.trade_history.len(), 1);
+        assert_close(broker.trade_history[0].lot_size, 0.4);
+        // 0.6 lots still riding, at the original entry
+        assert_eq!(broker.positions.len(), 1);
+        assert_close(broker.positions[0].lot_size, 0.6);
+        assert_close(broker.positions[0].entry_price, 1.1000);
+    }
+
+    #[test]
+    fn closing_partially_twice_matches_closing_once() {
+        let mut scaled_out = test_broker(0.0, 0.0);
+        scaled_out.buy(1.1000, 1.0, 0, None, None);
+        scaled_out.close_partial(0, 0.5, 1.1050, 1);
+        scaled_out.close_partial(0, 0.5, 1.1050, 1);
+
+        let mut all_at_once = test_broker(0.0, 0.0);
+        all_at_once.buy(1.1000, 1.0, 0, None, None);
+        all_at_once.close_all(1.1050, 1);
+
+        assert_close(scaled_out.cash, all_at_once.cash);
+        assert_eq!(scaled_out.positions.len(), 0);
+    }
+
+    #[test]
+    fn close_partial_charges_commission_only_on_the_lots_closed() {
+        let mut broker = test_broker(10.0, 0.0); // $10 per lot
+        broker.buy(1.1000, 1.0, 0, None, None);
+        assert_close(broker.cash, 10_000.0 - 10.0); // entry: full 1.0 lot
+
+        broker.close_partial(0, 0.25, 1.1000, 1); // flat price, so cost only
+        assert_close(broker.cash, 10_000.0 - 10.0 - 2.5); // exit: 0.25 lot only
+        assert_close(broker.trade_history[0].pnl, -5.0); // both legs of 0.25 lot
+    }
+
+    #[test]
+    fn close_partial_beyond_the_position_size_closes_it_outright() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 0.5, 0, None, None);
+
+        broker.close_partial(0, 99.0, 1.1050, 1);
+
+        assert_eq!(broker.positions.len(), 0);
+        assert_close(broker.trade_history[0].lot_size, 0.5); // billed for 0.5, not 99
+    }
+
+    #[test]
+    fn close_partial_ignores_zero_and_unknown_ids() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, None, None);
+
+        broker.close_partial(0, 0.0, 1.1050, 1); // zero lots
+        broker.close_partial(99, 0.5, 1.1050, 1); // no such position
+
+        assert_eq!(broker.trade_history.len(), 0);
+        assert_close(broker.cash, 10_000.0);
+        assert_close(broker.positions[0].lot_size, 1.0);
+    }
+
+    #[test]
+    fn update_sl_moves_the_stop_and_the_new_one_is_what_fills() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, Some(1.0950), None);
+
+        // price ran up, so trail the stop to lock in a profit
+        assert!(broker.update_sl(0, 1.1020));
+        assert_eq!(broker.positions[0].stop_loss, Some(1.1020));
+
+        // this bar dips to 1.1010: through the new stop, nowhere near the old one
+        broker.check_sl_tp(&Bar::new(1, 1.1050, 1.1060, 1.1010, 1.1040, 0.0));
+
+        assert_eq!(broker.positions.len(), 0);
+        assert_eq!(broker.trade_history[0].exit_price, 1.1020);
+        assert_close(broker.trade_history[0].pnl, 200.0); // (1.1020 - 1.1000) * 100_000
+    }
+
+    #[test]
+    fn update_sl_reports_an_unknown_id() {
+        let mut broker = test_broker(0.0, 0.0);
+        assert!(!broker.update_sl(42, 1.0950));
+    }
+
+    #[test]
+    fn update_sl_survives_a_partial_close() {
+        let mut broker = test_broker(0.0, 0.0);
+        broker.buy(1.1000, 1.0, 0, Some(1.0950), None);
+        broker.close_partial(0, 0.5, 1.1050, 1);
+
+        // the remainder keeps the same id, so it is still addressable
+        assert!(broker.update_sl(0, 1.1020));
+        assert_eq!(broker.positions[0].stop_loss, Some(1.1020));
     }
 
     #[test]

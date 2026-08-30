@@ -100,6 +100,39 @@ class MyStrategy(Strategy):
 | `self.sell(lot_size, stop_loss=None, take_profit=None)` | Open a short position |
 | `self.close_all()` | Close all open positions |
 | `self.close_position(id)` | Close a specific position by ID |
+| `self.close_partial(id, lot_size)` | Close part of a position, leaving the rest open |
+| `self.update_sl(id, stop_loss)` | Move a position's stop loss (returns `False` if the id is gone) |
+
+### Trailing stops and scaling out
+
+`update_sl` moves the stop on an open position in place, so a trailing stop costs
+nothing — closing and reopening would pay spread and commission again. `close_partial`
+banks part of a position and leaves the remainder running under the same id, so you can
+keep trailing it.
+
+```python
+class TrailingBreakout(Strategy):
+    def next(self):
+        if not self.positions:
+            self.buy(1.0, stop_loss=self._bar.close - 0.0050)
+            return
+
+        position = self.positions[0]
+
+        # take half off once the trade is 50 pips up
+        if self._bar.close > position.entry_price + 0.0050 and position.lot_size > 0.5:
+            self.close_partial(position.id, 0.5)
+
+        # trail the stop 50 pips behind price, never backwards
+        trail = self._bar.close - 0.0050
+        if position.stop_loss is None or trail > position.stop_loss:
+            self.update_sl(position.id, trail)
+```
+
+`update_sl` does not check which way the stop moves — widening a stop is a legitimate
+thing to do, so that call is yours to make (the `trail > position.stop_loss` line above).
+`close_partial` with a size at or above the position just closes it outright, and ignores
+zero or negative sizes.
 
 ### Bar fields
 
