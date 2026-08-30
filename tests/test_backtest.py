@@ -76,6 +76,40 @@ class BacktestTest(unittest.TestCase):
             self.assertIn("2026-01-01 01:00", contents)
 
 
+class TrailAndScaleOut(Strategy):
+    """Buy once, trail the stop up each bar, and scale half out on the third bar."""
+
+    def next(self):
+        if not self.positions:
+            self.buy(1.0, stop_loss=self._bar.close - 0.0100)
+            return
+        position = self.positions[0]
+        self.update_sl(position.id, self._bar.close - 0.0100)
+        if self.index == 3:
+            self.close_partial(position.id, 0.5)
+
+
+class PartialAndTrailingStopTest(unittest.TestCase):
+    def test_scaling_out_and_trailing_the_stop_through_the_python_api(self):
+        backtest = Backtest(rising_market(bars=6), TrailAndScaleOut, cash=10_000.0)
+        stats = backtest.run()
+
+        # two trades from one position: the 0.5 scaled out, then the 0.5 liquidated
+        self.assertEqual(stats.num_trades, 2)
+        self.assertEqual([trade.lot_size for trade in stats.trades], [0.5, 0.5])
+        self.assertEqual(stats.trades[0].entry_price, stats.trades[1].entry_price)
+
+    def test_update_sl_reports_a_missing_position(self):
+        recorded = []
+
+        class Probe(Strategy):
+            def next(self):
+                recorded.append(self.update_sl(999, 1.0))
+
+        Backtest(rising_market(bars=2), Probe, cash=10_000.0).run()
+        self.assertEqual(recorded, [False, False])
+
+
 def rising_market(bars=20):
     closes = [1.1000 + 0.0010 * i for i in range(bars)]
     return pd.DataFrame(

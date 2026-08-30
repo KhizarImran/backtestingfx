@@ -87,6 +87,14 @@ class Strategy:
     def close_position(self, id):
         self._broker.close_position(id, self._bar.close, self._bar.timestamp)
 
+    def close_partial(self, id, lot_size):
+        """Close `lot_size` lots of a position, leaving the rest open."""
+        self._broker.close_partial(id, lot_size, self._bar.close, self._bar.timestamp)
+
+    def update_sl(self, id, stop_loss):
+        """Move a position's stop loss. Returns False if there is no such position."""
+        return self._broker.update_sl(id, stop_loss)
+
 
 class _Adapter:
     def __init__(self, strategy):

@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `Strategy.update_sl(id, stop_loss)` — move the stop on an open position in place,
+  so a trailing stop doesn't pay spread and commission to close and reopen
+- `Strategy.close_partial(id, lot_size)` — scale out of a position, leaving the
+  remainder open under the same id
+
+### Changed
+- `Broker` closes positions through one internal `settle` helper instead of four
+  copies of the same PnL and commission arithmetic
+
 ## [0.1.2] - 2026-08-13
 
 ### Added
