@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.3] - 2026-08-30
 
 ### Added
 - `Strategy.update_sl(id, stop_loss)` — move the stop on an open position in place,
