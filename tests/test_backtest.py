@@ -89,6 +89,63 @@ class TrailAndScaleOut(Strategy):
             self.close_partial(position.id, 0.5)
 
 
+class SpreadTest(unittest.TestCase):
+    def test_midpoint_fills_equity_and_signal_runs_agree(self):
+        data = pd.DataFrame(
+            {name: [1.1, 1.1] for name in ("open", "high", "low", "close")},
+            index=pd.date_range("2026-01-01", periods=2, freq="h", tz="UTC"),
+        )
+        for is_long in (True, False):
+            with self.subTest(is_long=is_long):
+                equities = []
+
+                class Hold(Strategy):
+                    def next(self):
+                        if not self.positions:
+                            if is_long:
+                                self.buy(1.0)
+                            else:
+                                self.sell(1.0)
+                        equities.append(self.equity)
+
+                backtest = Backtest(data, Hold, commission=7.0, spread=0.0001)
+                stats = backtest.run()
+                self.assertAlmostEqual(stats.final_cash, 9_976.0)
+                self.assertAlmostEqual(stats.trades[0].pnl, -24.0)
+                self.assertAlmostEqual(
+                    stats.trades[0].entry_price, 1.10005 if is_long else 1.09995
+                )
+                self.assertAlmostEqual(
+                    stats.trades[0].exit_price, 1.09995 if is_long else 1.10005
+                )
+                self.assertEqual(len(equities), 2)
+                for equity in equities:
+                    self.assertAlmostEqual(equity, 9_983.0)
+                self.assertEqual(len(stats.equity_curve), 3)
+                for actual, expected in zip(
+                    stats.equity_curve, [10_000.0, 9_983.0, 9_976.0]
+                ):
+                    self.assertAlmostEqual(actual, expected)
+
+                results = backtest.optimize(
+                    lambda df, lots: [lots] * len(df),
+                    lots=[1.0 if is_long else -1.0],
+                )
+                signal_stats = results[0][1]
+                self.assertAlmostEqual(signal_stats.final_cash, stats.final_cash)
+                self.assertEqual(signal_stats.equity_curve, stats.equity_curve)
+                with tempfile.TemporaryDirectory() as directory:
+                    report = Path(
+                        backtest.plot(
+                            Path(directory) / "spread.html", open_browser=False
+                        )
+                    )
+                    self.assertIn(
+                        "Bid–ask spread (midpoint data)",
+                        report.read_text(encoding="utf-8"),
+                    )
+
+
 class PartialAndTrailingStopTest(unittest.TestCase):
     def test_scaling_out_and_trailing_the_stop_through_the_python_api(self):
         backtest = Backtest(rising_market(bars=6), TrailAndScaleOut, cash=10_000.0)

@@ -114,6 +114,12 @@ class _Adapter:
 
 
 class Backtest:
+    """Backtest midpoint OHLC data with a full bid–ask spread in price units.
+
+    Fills apply half the spread on each side of the midpoint. Open equity marks
+    positions at their closing bid/ask, excluding future exit commission.
+    """
+
     def __init__(
         self,
         df,

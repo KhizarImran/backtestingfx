@@ -189,11 +189,36 @@ Backtest(
     StrategyClass,
     cash=10000.0,             # starting account balance in USD
     commission=0.0,           # commission per lot (e.g. 7.0 = $7/lot)
-    spread=0.0,               # spread in price units (e.g. 0.0001 = 1 pip)
+    spread=0.0,               # full bid–ask width in price units (0.0001 = 1 EURUSD pip)
     contract_size=100000.0,   # standard FX lot size, don't change this
     quote_to_account=1.0,     # conversion rate from quote currency to USD
 )
 ```
+
+### Spread and price conventions
+
+OHLC prices are **midpoints** between bid and ask. `spread` is the constant full
+bid–ask width in absolute price units, not a percentage or a one-sided offset:
+
+- Bid = midpoint − spread / 2; ask = midpoint + spread / 2.
+- Longs enter at ask and exit at bid; shorts enter at bid and exit at ask.
+- Open-position equity marks longs at bid and shorts at ask. Entry commission is
+  already deducted from cash; future exit commission is excluded until closing.
+- Stop-loss and take-profit levels are midpoint levels, triggered by midpoint
+  OHLC highs/lows. Their exits use bid for longs and ask for shorts at that level.
+
+For example, with a flat EURUSD midpoint of `1.1000` and `spread=0.0001`, bid is
+`1.09995` and ask is `1.10005`. A one-lot long or short loses `$10` from spread
+on a round trip (`0.0001 × 100000`), before commission. Its open equity also
+reflects that `$10` spread cost. For USDJPY, one pip is typically `0.01` price
+units; spread inputs use the instrument's price units.
+
+**Migration from 0.2.0 and earlier:** those versions applied the entire `spread`
+value on each side, charging twice the documented bid–ask width. To preserve
+previous entry/exit prices and completed-trade PnL, pass twice your old value
+(for example, change `0.0001` to `0.0002`). Open equity now includes the exit-side
+spread, so historical equity curves and equity-based decisions can still change.
+Supply midpoint data: convert bid-only or ask-only data before running a backtest.
 
 ### Trading non-USD pairs
 
