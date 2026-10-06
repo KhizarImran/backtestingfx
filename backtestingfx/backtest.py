@@ -116,6 +116,8 @@ class _Adapter:
 class Backtest:
     """Backtest midpoint OHLC data with a full bid–ask spread in price units.
 
+    OHLCV and timestamp column names are case-insensitive.
+
     Fills apply half the spread on each side of the midpoint. Open equity marks
     positions at their closing bid/ask, excluding future exit commission.
     """
@@ -142,7 +144,15 @@ class Backtest:
 
     def _to_bars(self, df):
         required = {"open", "high", "low", "close"}
-        missing = required - set(df.columns.str.lower())
+        columns = {}
+        for column in df.columns:
+            normalized = column.lower() if isinstance(column, str) else column
+            if normalized in columns:
+                raise ValueError(
+                    f"DataFrame has duplicate columns after normalization: {normalized!r}"
+                )
+            columns[normalized] = column
+        missing = required - columns.keys()
         if missing:
             raise ValueError(f"DataFrame missing required columns: {sorted(missing)}")
 
@@ -151,16 +161,16 @@ class Backtest:
             if isinstance(idx, pd.Timestamp):
                 ts = int(idx.timestamp())
             else:
-                ts = int(pd.Timestamp(row["timestamp"]).timestamp())  # type: ignore
+                ts = int(pd.Timestamp(row[columns["timestamp"]]).timestamp())  # type: ignore
 
             bars.append(
                 _rust.Bar(  # type: ignore
                     timestamp=ts,
-                    open=float(row["open"]),
-                    high=float(row["high"]),
-                    low=float(row["low"]),
-                    close=float(row["close"]),
-                    volume=float(row.get("volume", 0.0)),
+                    open=float(row[columns["open"]]),
+                    high=float(row[columns["high"]]),
+                    low=float(row[columns["low"]]),
+                    close=float(row[columns["close"]]),
+                    volume=float(row[columns["volume"]]) if "volume" in columns else 0.0,
                 )
             )
         return bars
