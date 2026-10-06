@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Contributor setup and validation guidance, bug/feature issue templates, an
+  API/platform compatibility policy, and a prioritized FX roadmap.
+
 ### Fixed
 - `spread` now means the full bid–ask width around midpoint OHLC prices. Each
   fill applies half the width, so a one-pip EURUSD spread costs $10 per standard

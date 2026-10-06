@@ -270,6 +270,13 @@ The index should be a `DatetimeIndex`, or include a `timestamp` column. Volume i
 
 The backtesting engine is written in Rust and compiled as a native Python extension via [PyO3](https://pyo3.rs). This means the event loop, broker simulation, and stats computation run at native speed while your strategy stays in plain Python.
 
+## Contributing and project direction
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, checks, and examples,
+[COMPATIBILITY.md](COMPATIBILITY.md) for API and platform expectations, and
+[ROADMAP.md](ROADMAP.md) for the FX scope and prioritized backlog.
+Use the GitHub issue templates for bug reports and feature proposals.
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
