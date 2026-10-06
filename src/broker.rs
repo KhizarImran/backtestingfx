@@ -10,6 +10,7 @@ pub struct Broker {
     pub positions: Vec<Position>,
     pub trade_history: Vec<Trade>,
     pub commission: f64,
+    /// Full bid–ask width in price units; supplied prices are midpoints.
     pub spread: f64,
     pub contract_size: f64,
     pub quote_to_account: f64,
@@ -17,15 +18,23 @@ pub struct Broker {
 
 // Rust-internal only, not exposed to Python
 impl Broker {
+    fn bid(&self, midpoint: f64) -> f64 {
+        midpoint - self.spread / 2.0
+    }
+
+    fn ask(&self, midpoint: f64) -> f64 {
+        midpoint + self.spread / 2.0
+    }
+
     // Closing a position, part of a position, or a whole book all do the same four things:
     // work out the fill price, work out the PnL, charge commission, record the Trade.
     // `lots` is how much of the position to close, so a partial close is the same code
     // with a smaller number.
     fn settle(&mut self, position: &Position, lots: f64, price: f64, timestamp: i64) {
         let close_price = if position.is_long {
-            price - self.spread
+            self.bid(price)
         } else {
-            price + self.spread
+            self.ask(price)
         };
 
         let pnl = if position.is_long {
@@ -123,7 +132,7 @@ impl Broker {
         stop_loss: Option<f64>,
         take_profit: Option<f64>,
     ) {
-        let fill_price = price + self.spread;
+        let fill_price = self.ask(price);
         self.cash -= self.commission * lot_size;
         let id = self.next_id;
         self.next_id += 1;
@@ -146,7 +155,7 @@ impl Broker {
         stop_loss: Option<f64>,
         take_profit: Option<f64>,
     ) {
-        let fill_price = price - self.spread;
+        let fill_price = self.bid(price);
         self.cash -= self.commission * lot_size;
         let id = self.next_id;
         self.next_id += 1;
@@ -224,12 +233,12 @@ impl Broker {
             .iter()
             .map(|p| {
                 if p.is_long {
-                    (current_price - p.entry_price)
+                    (self.bid(current_price) - p.entry_price)
                         * p.lot_size
                         * self.contract_size
                         * self.quote_to_account
                 } else {
-                    (p.entry_price - current_price)
+                    (p.entry_price - self.ask(current_price))
                         * p.lot_size
                         * self.contract_size
                         * self.quote_to_account
@@ -289,6 +298,81 @@ mod tests {
             broker.cash - broker.initial_cash,
             broker.trade_history.iter().map(|trade| trade.pnl).sum(),
         );
+    }
+
+    #[test]
+    fn flat_round_trips_pay_one_full_spread_and_both_commissions() {
+        for (is_long, commission) in [(true, 0.0), (false, 0.0), (true, 7.0), (false, 7.0)] {
+            let mut broker = test_broker(commission, 0.0001);
+            if is_long {
+                broker.buy(1.1000, 1.0, 0, None, None);
+            } else {
+                broker.sell(1.1000, 1.0, 0, None, None);
+            }
+            let expected_entry = if is_long { 1.10005 } else { 1.09995 };
+            let expected_exit = if is_long { 1.09995 } else { 1.10005 };
+            assert_close(broker.positions[0].entry_price, expected_entry);
+            assert_close(broker.cash, 10_000.0 - commission);
+            // $10 spread + entry commission; exit commission is not yet paid.
+            assert_close(broker.equity(1.1000), 9_990.0 - commission);
+
+            broker.close_all(1.1000, 1);
+            assert_close(broker.trade_history[0].exit_price, expected_exit);
+            assert_close(broker.trade_history[0].pnl, -10.0 - 2.0 * commission);
+            assert_close(broker.cash, 9_990.0 - 2.0 * commission);
+            assert_close(broker.equity(1.1000), broker.cash);
+        }
+    }
+
+    #[test]
+    fn partial_and_individual_closes_reconcile_spread_and_conversion() {
+        for is_long in [true, false] {
+            let mut broker = Broker::new(10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+            if is_long {
+                broker.buy(1.1000, 1.0, 0, None, None);
+            } else {
+                broker.sell(1.1000, 1.0, 0, None, None);
+            }
+            assert_close(broker.equity(1.1000), 9_980.3);
+            broker.close_partial(0, 0.4, 1.1000, 1);
+            assert_close(broker.trade_history[0].pnl, -10.68);
+            broker.close_position(0, 1.1000, 2);
+            assert_close(broker.trade_history[1].pnl, -16.02);
+            assert_close(broker.cash, 9_973.3);
+            assert_close(
+                broker.cash - broker.initial_cash,
+                broker.trade_history.iter().map(|trade| trade.pnl).sum(),
+            );
+        }
+    }
+
+    #[test]
+    fn midpoint_stop_and_target_exits_use_closing_bid_or_ask() {
+        for is_long in [true, false] {
+            for use_stop in [true, false] {
+                let mut broker = test_broker(0.0, 0.0001);
+                let level = if is_long == use_stop { 1.0950 } else { 1.1050 };
+                let sl = use_stop.then_some(level);
+                let tp = (!use_stop).then_some(level);
+                if is_long {
+                    broker.buy(1.1000, 1.0, 0, sl, tp);
+                } else {
+                    broker.sell(1.1000, 1.0, 0, sl, tp);
+                }
+                broker.check_sl_tp(&Bar::new(1, level, level, level, level, 0.0));
+                assert!(broker.positions.is_empty());
+                let exit = if is_long {
+                    level - 0.00005
+                } else {
+                    level + 0.00005
+                };
+                assert_close(broker.trade_history[0].exit_price, exit);
+                assert_close(
+                    broker.trade_history[0].pnl,
+                    if use_stop { -510.0 } else { 490.0 },
+                );
+            }
+        }
     }
 
     #[test]

@@ -346,7 +346,7 @@ def render_report(
       {chart_html}
       <div class="assumptions">
         <div class="assumption"><span>Commission / lot / side</span><strong>{commission:,.4f}</strong></div>
-        <div class="assumption"><span>Spread offset</span><strong>{spread:,.5f}</strong></div>
+        <div class="assumption"><span>Bid–ask spread (midpoint data)</span><strong>{spread:,.5f}</strong></div>
         <div class="assumption"><span>Contract size</span><strong>{contract_size:,.0f}</strong></div>
         <div class="assumption"><span>Quote conversion</span><strong>{quote_to_account:,.5f}</strong></div>
       </div>

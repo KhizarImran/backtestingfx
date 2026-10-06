@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `spread` now means the full bid–ask width around midpoint OHLC prices. Each
+  fill applies half the width, so a one-pip EURUSD spread costs $10 per standard
+  lot on a flat round trip, before commission, instead of $20.
+- Open equity uses the bid/ask price available to close each position and includes
+  the exit-side spread (future exit commission is still charged only at closing).
+
+### Migration
+- Double the previous `spread` input to preserve pre-change fills and completed
+  trade PnL. Equity curves can still differ because marking now includes exit
+  spread. SL/TP levels remain midpoint levels. See README price conventions.
+
 ## [0.2.0] - 2026-08-30
 
 First release to reach PyPI since 0.1.1 — the `v0.1.2` tag predated the release
