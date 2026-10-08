@@ -7,6 +7,8 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Native engine runs reset cash, positions, trade history, and position IDs before
+  each independent simulation, including repeated `run_native_sma()` calls.
 - `spread` now means the full bid–ask width around midpoint OHLC prices. Each
   fill applies half the width, so a one-pip EURUSD spread costs $10 per standard
   lot on a flat round trip, before commission, instead of $20.

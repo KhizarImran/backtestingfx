@@ -266,6 +266,14 @@ open, high, low, close, volume
 
 The index should be a `DatetimeIndex`, or include a `timestamp` column. Volume is optional (defaults to 0).
 
+### Reusing a native engine
+
+Native Rust `Engine::run()` and Python `Engine.run_native_sma()` start each run
+with fresh broker state using the current initial cash and cost configuration.
+Cash, positions, completed trades, position IDs, and equity history do not carry
+between runs. For native strategies with mutable internal state, reset that state
+in `Strategy::init()` or construct a fresh strategy for each run.
+
 ## Why Rust?
 
 The backtesting engine is written in Rust and compiled as a native Python extension via [PyO3](https://pyo3.rs). This means the event loop, broker simulation, and stats computation run at native speed while your strategy stays in plain Python.
