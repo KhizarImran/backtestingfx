@@ -12,7 +12,16 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Run an independent simulation using the broker's current configuration.
+    /// Strategies with their own mutable state should reset it in `init`.
     pub fn run(&mut self, strategy: &mut dyn Strategy) -> Stats {
+        self.broker = Broker::new(
+            self.broker.initial_cash,
+            self.broker.commission,
+            self.broker.spread,
+            self.broker.contract_size,
+            self.broker.quote_to_account,
+        );
         self.equity_curve.clear();
         self.equity_curve.push(self.broker.initial_cash);
 
@@ -159,5 +168,81 @@ mod tests {
         assert_eq!(engine.equity_curve, vec![10_000.0, 9_986.0]);
         assert_eq!(stats.final_cash, 9_986.0);
         assert_eq!(engine.equity_curve.last(), Some(&stats.final_cash));
+    }
+
+    #[test]
+    fn repeated_native_runs_reset_cash_trades_and_position_ids() {
+        let data = vec![Bar::new(0, 1.1, 1.1, 1.1, 1.1, 0.0)];
+        let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+        let mut strategy = BuyAndHold;
+        let first = engine.run(&mut strategy);
+        let second = engine.run(&mut strategy);
+
+        assert_eq!(second.final_cash, first.final_cash);
+        assert_eq!(second.equity_curve, first.equity_curve);
+        assert_eq!(second.num_trades, 1);
+        assert_eq!(engine.broker.trade_history.len(), 1);
+        assert_eq!(second.trades[0].pnl, first.trades[0].pnl);
+        assert!((second.final_cash - 9_973.3).abs() < 1e-8);
+        assert!(engine.broker.positions.is_empty());
+
+        // Probe the next run from inside the strategy, before final liquidation.
+        struct Probe;
+        impl Strategy for Probe {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                assert_eq!(broker.cash, 10_000.0);
+                assert!(broker.positions.is_empty());
+                assert!(broker.trade_history.is_empty());
+                broker.buy(bar.close, 1.0, bar.timestamp, None, None);
+                assert_eq!(broker.positions[0].id, 0);
+            }
+        }
+        engine.run(&mut Probe);
+    }
+
+    #[test]
+    fn a_different_strategy_matches_a_fresh_engine() {
+        struct SellEveryBar;
+        impl Strategy for SellEveryBar {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                broker.sell(bar.close, 0.5, bar.timestamp, None, None);
+            }
+        }
+        let data = vec![
+            Bar::new(0, 1.1, 1.1, 1.1, 1.1, 0.0),
+            Bar::new(1, 1.2, 1.2, 1.2, 1.2, 0.0),
+        ];
+        let mut reused = Engine::new(data.clone(), 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+        let mut fresh = Engine::new(data, 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+        reused.run(&mut BuyAndHold);
+        let actual = reused.run(&mut SellEveryBar);
+        let expected = fresh.run(&mut SellEveryBar);
+
+        assert_eq!(actual.final_cash, expected.final_cash);
+        assert_eq!(actual.equity_curve, expected.equity_curve);
+        assert_eq!(actual.num_trades, expected.num_trades);
+        for (actual, expected) in actual.trades.iter().zip(&expected.trades) {
+            assert_eq!(actual.pnl, expected.pnl);
+            assert_eq!(actual.entry_price, expected.entry_price);
+            assert_eq!(actual.exit_price, expected.exit_price);
+            assert!(!actual.is_long);
+        }
+    }
+
+    #[test]
+    fn empty_run_discards_existing_positions_and_history() {
+        let mut engine = Engine::new(Vec::new(), 10_000.0, 7.0, 0.0001, 100_000.0, 1.0);
+        engine.broker.buy(1.1, 1.0, 0, None, None);
+        engine.broker.close_all(1.2, 1);
+        engine.broker.buy(1.2, 1.0, 1, None, None);
+        engine.equity_curve.push(123.0);
+
+        let stats = engine.run(&mut BuyAndHold);
+
+        assert_eq!(stats.final_cash, 10_000.0);
+        assert_eq!(stats.num_trades, 0);
+        assert_eq!(stats.equity_curve, vec![10_000.0]);
+        assert!(engine.broker.positions.is_empty());
+        assert!(engine.broker.trade_history.is_empty());
     }
 }
