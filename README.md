@@ -220,6 +220,30 @@ previous entry/exit prices and completed-trade PnL, pass twice your old value
 spread, so historical equity curves and equity-based decisions can still change.
 Supply midpoint data: convert bid-only or ask-only data before running a backtest.
 
+### Intrabar stop-loss and take-profit policy
+
+OHLC bars do not reveal the order in which prices were visited. If a bar touches
+both a position's stop-loss and take-profit, the broker deterministically chooses
+the **stop-loss first**, for both long and short positions. Exact touches count
+as hits. This conservative assumption can differ from the outcome on tick data;
+it does not reconstruct the intrabar price path.
+
+For example, a long entered at midpoint `1.1000`, with SL `1.0900` and TP
+`1.1100`, exits at the stop midpoint when the next bar has low `1.0800` and
+high `1.1200`. Bid/ask spread and exit commission still apply to the fill.
+
+The engine checks existing positions' SL/TP **before** calling the strategy for
+each bar. Orders opened by `next()` fill at that bar's close; their SL/TP levels
+are first checked on the following bar. The entry bar's earlier high/low is not
+replayed against the new position. A position opened on the final bar instead
+undergoes the usual final liquidation at that bar's close.
+
+**Current gap limitation:** SL/TP fills use the configured midpoint level, even
+if the bar opens beyond it. If both levels are touched, stop-first still applies
+regardless of the open. Such fills may be unattainable after a gap; gap-aware
+execution is tracked in [#8](https://github.com/KhizarImran/backtestingfx/issues/8).
+This policy is fixed, with no configurable intrabar ordering option.
+
 ### Trading non-USD pairs
 
 By default `quote_to_account=1.0` which is correct for USD-quoted pairs (EURUSD, GBPUSD).

@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Documented and regression-tested the stop-first intrabar SL/TP policy,
+  inclusive touches, next-bar checks for new entries, and current gap-fill limits.
 - Contributor setup and validation guidance, bug/feature issue templates, an
   API/platform compatibility policy, and a prioritized FX roadmap.
 
