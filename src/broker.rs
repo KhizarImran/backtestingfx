@@ -59,6 +59,8 @@ impl Broker {
         });
     }
 
+    /// Midpoint OHLC triggers are inclusive; if both levels are touched, stop wins.
+    /// The engine calls this before the strategy, so new entries wait until the next bar.
     pub fn check_sl_tp(&mut self, bar: &Bar) {
         let mut i = 0;
         while i < self.positions.len() {
@@ -534,5 +536,47 @@ mod tests {
 
         // price moved up 50 pips, position still open (not closed)
         assert_close(broker.equity(1.1050), 10_000.0 + 500.0);
+    }
+
+    #[test]
+    fn ambiguous_bars_choose_stop_for_longs_and_shorts_including_exact_touches() {
+        for is_long in [true, false] {
+            for exact_touch in [true, false] {
+                let mut broker = test_broker(7.0, 0.0001);
+                let (stop, target) = if is_long { (1.09, 1.11) } else { (1.11, 1.09) };
+                if is_long {
+                    broker.buy(1.1, 1.0, 0, Some(stop), Some(target));
+                } else {
+                    broker.sell(1.1, 1.0, 0, Some(stop), Some(target));
+                }
+                let (high, low) = if exact_touch { (1.11, 1.09) } else { (1.12, 1.08) };
+                broker.check_sl_tp(&Bar::new(1, 1.1, high, low, 1.1, 0.0));
+
+                assert!(broker.positions.is_empty());
+                assert_eq!(broker.trade_history.len(), 1);
+                let trade = &broker.trade_history[0];
+                assert_close(trade.exit_price, if is_long { stop - 0.00005 } else { stop + 0.00005 });
+                assert_close(trade.pnl, -1024.0);
+                assert_close(broker.cash, 8976.0);
+                assert_eq!(trade.exit_timestamp, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn gap_beyond_stop_currently_fills_at_level_not_open() {
+        // This records the current limitation; gap-aware fills are tracked in #8.
+        for is_long in [true, false] {
+            let mut broker = test_broker(0.0, 0.0);
+            let (stop, open) = if is_long { (1.09, 1.08) } else { (1.11, 1.12) };
+            if is_long {
+                broker.buy(1.1, 1.0, 0, Some(stop), None);
+            } else {
+                broker.sell(1.1, 1.0, 0, Some(stop), None);
+            }
+            broker.check_sl_tp(&Bar::new(1, open, open, open, open, 0.0));
+            assert!(broker.positions.is_empty());
+            assert_close(broker.trade_history[0].exit_price, stop);
+        }
     }
 }
