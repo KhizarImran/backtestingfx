@@ -62,10 +62,12 @@ impl Broker {
     /// Midpoint OHLC triggers are inclusive; if both levels are touched, stop wins.
     /// The engine calls this before the strategy, so new entries wait until the next bar.
     pub fn check_sl_tp(&mut self, bar: &Bar) {
-        let mut i = 0;
-        while i < self.positions.len() {
+        // Move the Vec out so settlement can borrow self while retain compacts
+        // survivors in place. This preserves capacity and both observable orders,
+        // without shifting the entire suffix after every triggered position.
+        let mut positions = std::mem::take(&mut self.positions);
+        positions.retain(|p| {
             let fill = {
-                let p = &self.positions[i];
                 if p.is_long {
                     let sl_hit = p.stop_loss.is_some_and(|sl| bar.low <= sl);
                     let tp_hit = p.take_profit.is_some_and(|tp| bar.high >= tp);
@@ -90,12 +92,13 @@ impl Broker {
             };
 
             if let Some(fill_price) = fill {
-                let position = self.positions.remove(i);
-                self.settle(&position, position.lot_size, fill_price, bar.timestamp);
+                self.settle(p, p.lot_size, fill_price, bar.timestamp);
+                false
             } else {
-                i += 1;
+                true
             }
-        }
+        });
+        self.positions = positions;
     }
 }
 
@@ -263,6 +266,104 @@ mod tests {
     // f64 arithmetic isn't exact, so compare with a tolerance instead of assert_eq!
     fn assert_close(a: f64, b: f64) {
         assert!((a - b).abs() < 1e-6, "expected {b}, got {a}");
+    }
+
+    // 0 = survivor, 1 = stop only, 2 = target only, 3 = both touched.
+    // Unique timestamps and sizes identify settlement order independently of IDs.
+    fn check_batch_exits(kinds: &[u8]) {
+        for long_first in [true, false] {
+            let mut broker = Broker::new(10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+            let mut survivors = Vec::new();
+            let mut expected_trades = Vec::new();
+            let mut expected_cash = 10_000.0;
+            for (i, &kind) in kinds.iter().enumerate() {
+                let is_long = if i % 2 == 0 { long_first } else { !long_first };
+                let lots = (i + 1) as f64 * 0.01;
+                let stop = if is_long { 1.09 } else { 1.11 };
+                let target = if is_long { 1.11 } else { 1.09 };
+                let sl = if kind == 1 || kind == 3 {
+                    Some(stop)
+                } else if kind == 0 && i % 2 == 0 {
+                    Some(if is_long { 1.08 } else { 1.12 })
+                } else {
+                    None
+                };
+                let tp = if kind == 2 || kind == 3 {
+                    Some(target)
+                } else if kind == 0 && i % 2 == 0 {
+                    Some(if is_long { 1.12 } else { 1.08 })
+                } else {
+                    None
+                };
+                if is_long {
+                    broker.buy(1.1, lots, i as i64, sl, tp);
+                } else {
+                    broker.sell(1.1, lots, i as i64, sl, tp);
+                }
+                expected_cash -= 7.0 * lots;
+                if kind == 0 {
+                    survivors.push(broker.positions.last().unwrap().clone());
+                } else {
+                    let fill = if kind == 2 { target } else { stop };
+                    let exit = fill + if is_long { -0.00005 } else { 0.00005 };
+                    let gross_pnl =
+                        (if kind == 2 { 0.0099 } else { -0.0101 }) * lots * 100_000.0 * 1.27;
+                    expected_cash += gross_pnl - 7.0 * lots;
+                    expected_trades.push((i as i64, is_long, lots, exit, gross_pnl - 14.0 * lots));
+                }
+            }
+            let capacity = broker.positions.capacity();
+            let bar = Bar::new(100, 1.1, 1.11, 1.09, 1.1, 0.0);
+            broker.check_sl_tp(&bar);
+            assert_eq!(broker.positions.capacity(), capacity);
+            assert_eq!(broker.positions.len(), survivors.len());
+            for (actual, expected) in broker.positions.iter().zip(&survivors) {
+                assert_eq!(actual.id, expected.id);
+                assert_eq!(actual.entry_timestamp, expected.entry_timestamp);
+                assert_eq!(actual.is_long, expected.is_long);
+                assert_eq!(actual.entry_price, expected.entry_price);
+                assert_eq!(actual.lot_size, expected.lot_size);
+                assert_eq!(actual.stop_loss, expected.stop_loss);
+                assert_eq!(actual.take_profit, expected.take_profit);
+            }
+            assert_eq!(broker.trade_history.len(), expected_trades.len());
+            for (trade, &(timestamp, is_long, lots, exit, pnl)) in
+                broker.trade_history.iter().zip(&expected_trades)
+            {
+                assert_eq!(trade.entry_timestamp, timestamp);
+                assert_eq!(trade.exit_timestamp, 100);
+                assert_eq!(trade.is_long, is_long);
+                assert_close(trade.lot_size, lots);
+                assert_close(trade.exit_price, exit);
+                assert_close(trade.pnl, pnl);
+            }
+            assert_close(broker.cash, expected_cash);
+            // A second scan must not settle a closed position twice.
+            broker.check_sl_tp(&bar);
+            assert_eq!(broker.trade_history.len(), expected_trades.len());
+            assert_close(broker.cash, expected_cash);
+            broker.close_all(1.1, 101);
+            assert_close(
+                broker.cash - broker.initial_cash,
+                broker.trade_history.iter().map(|trade| trade.pnl).sum(),
+            );
+        }
+    }
+
+    #[test]
+    fn batch_sl_tp_all_triggered_preserves_settlement_and_stop_precedence() {
+        check_batch_exits(&[1, 2, 3, 1, 2, 3]);
+    }
+
+    #[test]
+    fn batch_sl_tp_none_triggered_preserves_positions() {
+        check_batch_exits(&[0, 0, 0, 0]);
+        check_batch_exits(&[]);
+    }
+
+    #[test]
+    fn batch_sl_tp_interleaved_preserves_survivors_and_settlement_order() {
+        check_batch_exits(&[0, 1, 0, 2, 3, 0, 1, 0, 2, 0]);
     }
 
     #[test]

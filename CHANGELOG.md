@@ -9,6 +9,8 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Batch stop-loss/take-profit processing uses a single linear pass, preserving
+  survivor and trade order, fills, and accounting when many positions exit together.
 - Native engine runs reset cash, positions, trade history, and position IDs before
   each independent simulation, including repeated `run_native_sma()` calls.
 - `spread` now means the full bid–ask width around midpoint OHLC prices. Each
