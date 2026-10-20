@@ -4,6 +4,7 @@ Cargo.lock
 __pycache__/
 ### My claude md file
 CLAUDE.md
+.claude/settings.local.json
 data/*
 !data/EURUSD_1H.csv
 .env
