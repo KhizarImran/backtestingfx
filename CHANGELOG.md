@@ -3,12 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Constant-time Python `Strategy` and `Broker` properties `has_positions` and
+  `position_count`, avoiding position-list copies for presence and count checks.
+- A callback benchmark with separate conversion, engine construction,
+  initialization, and simulation timings, native and Python no-op baselines,
+  indicator and position-access workloads, correctness checks, and peak RSS.
 - Documented and regression-tested the stop-first intrabar SL/TP policy,
   inclusive touches and next-bar checks for new entries.
 - Contributor setup and validation guidance, bug/feature issue templates, an
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Python strategy dispatch reuses the Python method-name string for `next`,
+  while preserving per-bar method lookup, distinct Bar objects, and exceptions.
+- The existing cross-library comparison and benchmark now use matched fixed-unit
+  next-open strategies, verify trades and full equity curves, and report setup,
+  simulation, and total timings separately. Spread is zero; commission is matched.
 - Python constructors reject nonfinite or out-of-range broker settings. Order,
   partial-close, stop-update, closing-price, and equity-price inputs are checked
   before account mutation. Finite nonpositive partial sizes remain no-ops.

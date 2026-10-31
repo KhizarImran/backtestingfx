@@ -70,6 +70,12 @@ impl Strategy for SmaCross {
     }
 }
 
+struct Noop;
+
+impl Strategy for Noop {
+    fn next(&mut self, _bar: &Bar, _broker: &mut Broker) {}
+}
+
 impl Engine {
     pub fn new(
         data: Vec<Bar>,
@@ -128,6 +134,7 @@ impl Engine {
             ),
         )?;
 
+        let next_name = pyo3::intern!(py, "next");
         for bar in &self.data {
             {
                 let mut b = broker_py.borrow_mut(py);
@@ -135,7 +142,7 @@ impl Engine {
             }
             strategy
                 .bind(py)
-                .call_method("next", (bar.clone(), broker_py.clone_ref(py)), None)?;
+                .call_method1(next_name, (bar.clone(), broker_py.clone_ref(py)))?;
             let equity = broker_py.borrow(py).equity(bar.close);
             self.equity_curve.push(equity);
         }
@@ -163,6 +170,11 @@ impl Engine {
             closes: Vec::new(),
         };
         Ok(self.run(&mut strat))
+    }
+
+    // Benchmark baseline with the same broker, equity, statistics, and finalization paths.
+    fn _run_native_noop(&mut self) -> Stats {
+        self.run(&mut Noop)
     }
 }
 
