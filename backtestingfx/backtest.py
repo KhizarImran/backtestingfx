@@ -132,6 +132,7 @@ class Backtest:
         contract_size=100000.0,
         quote_to_account=1.0,
     ):
+        _rust._validate_config(cash, commission, spread, contract_size, quote_to_account)
         self._df = df
         self._strategy_class = strategy_class
         self._cash = cash
@@ -218,11 +219,20 @@ class Backtest:
         signals = []
         for combo in combos:
             signal = np.asarray(signal_fn(self._df, **combo), dtype=float)
+            if signal.ndim != 1:
+                raise ValueError(f"signal_fn must return a one-dimensional signal for {combo}")
+            if len(signal) != len(self._df):
+                raise ValueError(
+                    f"signal_fn returned {len(signal)} values for {combo}, expected "
+                    f"{len(self._df)} (one per bar)"
+                )
             if np.isnan(signal).any():
                 raise ValueError(
                     f"signal_fn returned NaN for {combo} — indicator warmup should "
                     "produce 0.0 (flat), not NaN"
                 )
+            if not np.isfinite(signal).all():
+                raise ValueError(f"signal_fn must return finite values for {combo}")
             # ponytail: tolist() is the cheap bridge into Rust. It costs one Python
             # float per bar per combo; swap in the `numpy` crate for a zero-copy
             # PyReadonlyArray1 if this ever shows up in a profile.

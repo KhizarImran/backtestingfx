@@ -83,6 +83,13 @@ pub fn run_grid(
             bars
         )));
     }
+    for (signal_index, signal) in signals.iter().enumerate() {
+        if let Some(bar_index) = signal.iter().position(|value| !value.is_finite()) {
+            return Err(PyValueError::new_err(format!(
+                "signal {signal_index} at bar {bar_index} must be finite"
+            )));
+        }
+    }
 
     let engine: &Engine = &engine;
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get());

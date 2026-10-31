@@ -1,4 +1,5 @@
 use crate::types::{Bar, Position, Trade};
+use crate::validation;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -114,9 +115,7 @@ impl Broker {
     }
 }
 
-#[pymethods]
 impl Broker {
-    #[new]
     pub fn new(
         initial_cash: f64,
         commission: f64,
@@ -264,6 +263,89 @@ impl Broker {
             .sum();
 
         self.cash + unrealized
+    }
+}
+
+// Python inputs are checked before the native methods can mutate account state.
+#[pymethods]
+impl Broker {
+    #[new]
+    fn py_new(
+        initial_cash: f64,
+        commission: f64,
+        spread: f64,
+        contract_size: f64,
+        quote_to_account: f64,
+    ) -> PyResult<Self> {
+        validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
+        Ok(Self::new(initial_cash, commission, spread, contract_size, quote_to_account))
+    }
+
+    #[pyo3(name = "positions")]
+    fn py_positions(&self) -> Vec<Position> {
+        self.positions()
+    }
+
+    #[pyo3(name = "buy")]
+    fn py_buy(
+        &mut self,
+        price: f64,
+        lot_size: f64,
+        timestamp: i64,
+        stop_loss: Option<f64>,
+        take_profit: Option<f64>,
+    ) -> PyResult<()> {
+        validation::order(price, lot_size, stop_loss, take_profit)?;
+        self.buy(price, lot_size, timestamp, stop_loss, take_profit);
+        Ok(())
+    }
+
+    #[pyo3(name = "sell")]
+    fn py_sell(
+        &mut self,
+        price: f64,
+        lot_size: f64,
+        timestamp: i64,
+        stop_loss: Option<f64>,
+        take_profit: Option<f64>,
+    ) -> PyResult<()> {
+        validation::order(price, lot_size, stop_loss, take_profit)?;
+        self.sell(price, lot_size, timestamp, stop_loss, take_profit);
+        Ok(())
+    }
+
+    #[pyo3(name = "close_position")]
+    fn py_close_position(&mut self, id: u64, price: f64, timestamp: i64) -> PyResult<()> {
+        validation::positive("price", price)?;
+        self.close_position(id, price, timestamp);
+        Ok(())
+    }
+
+    #[pyo3(name = "close_partial")]
+    fn py_close_partial(&mut self, id: u64, lot_size: f64, price: f64, timestamp: i64) -> PyResult<()> {
+        validation::finite("lot_size", lot_size)?;
+        validation::positive("price", price)?;
+        self.close_partial(id, lot_size, price, timestamp);
+        Ok(())
+    }
+
+    #[pyo3(name = "update_sl")]
+    fn py_update_sl(&mut self, id: u64, stop_loss: f64) -> PyResult<bool> {
+        validation::positive("stop_loss", stop_loss)?;
+        Ok(self.update_sl(id, stop_loss))
+    }
+
+    #[pyo3(name = "close_all")]
+    fn py_close_all(&mut self, price: f64, timestamp: i64) -> PyResult<()> {
+        validation::positive("price", price)?;
+        self.close_all(price, timestamp);
+        Ok(())
+    }
+
+    #[pyo3(name = "equity")]
+    fn py_equity(&self, current_price: f64) -> PyResult<f64> {
+        validation::positive("price", current_price)?;
+        Ok(self.equity(current_price))
     }
 }
 
