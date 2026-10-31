@@ -4,11 +4,15 @@
 
 ### Added
 - Documented and regression-tested the stop-first intrabar SL/TP policy,
-  inclusive touches, next-bar checks for new entries, and current gap-fill limits.
+  inclusive touches and next-bar checks for new entries.
 - Contributor setup and validation guidance, bug/feature issue templates, an
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- SL/TP processing checks the midpoint open first: crossed stops fill at the
+  adverse open, while crossed targets receive the favorable open, before any
+  later range touches. Exit spread, commission, and conversion still apply.
+  Bars that open inside both levels retain stop-first intrabar behavior.
 - Batch stop-loss/take-profit processing uses a single linear pass, preserving
   survivor and trade order, fills, and accounting when many positions exit together.
 - Native engine runs reset cash, positions, trade history, and position IDs before
@@ -20,6 +24,10 @@
   the exit-side spread (future exit commission is still charged only at closing).
 
 ### Migration
+- Gap-bar SL/TP fills now use the opening price instead of the configured level.
+  An opening target also takes precedence over a later stop touch. Rerun affected
+  backtests: PnL, equity, and strategy decisions can change; there is no legacy
+  gap-fill option. See README execution policy for long/short examples.
 - Double the previous `spread` input to preserve pre-change fills and completed
   trade PnL. Equity curves can still differ because marking now includes exit
   spread. SL/TP levels remain midpoint levels. See README price conventions.

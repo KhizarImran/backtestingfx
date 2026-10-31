@@ -13,7 +13,8 @@ priorities or delivered capabilities change.
 
 ## 1. Correctness foundation (P0)
 
-- Gap-aware stop/target fills: [#8](https://github.com/KhizarImran/backtestingfx/issues/8).
+- Implemented (unreleased): gap-aware stop/target fills
+  ([#8](https://github.com/KhizarImran/backtestingfx/issues/8)); see README execution policy.
 - Data and timestamp validation: [#15](https://github.com/KhizarImran/backtestingfx/issues/15).
 - Broker, size, and signal validation: [#16](https://github.com/KhizarImran/backtestingfx/issues/16).
 - Independent native engine runs: [#18](https://github.com/KhizarImran/backtestingfx/issues/18).

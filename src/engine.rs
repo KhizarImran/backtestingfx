@@ -159,6 +159,45 @@ mod tests {
     }
 
     #[test]
+    fn native_gap_fills_settle_before_strategy_and_reconcile_final_equity() {
+        struct EnterOnce(bool);
+        impl Strategy for EnterOnce {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                assert!(broker.positions.is_empty());
+                if bar.timestamp == 0 {
+                    if self.0 {
+                        broker.buy(bar.close, 0.4, 0, Some(1.09), Some(1.11));
+                    } else {
+                        broker.sell(bar.close, 0.4, 0, Some(1.11), Some(1.09));
+                    }
+                } else {
+                    assert_eq!(broker.trade_history.len(), 1);
+                    assert_eq!(broker.trade_history[0].exit_timestamp, bar.timestamp);
+                }
+            }
+        }
+        for is_long in [true, false] {
+            for open in [1.08, 1.12] {
+                let data = vec![
+                    Bar::new(0, 1.1, 1.1, 1.1, 1.1, 0.0),
+                    Bar::new(1, open, 1.12, 1.08, 1.1, 0.0),
+                ];
+                let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+                let stats = engine.run(&mut EnterOnce(is_long));
+                let favorable = is_long == (open > 1.1);
+                let pnl = (if favorable { 1990.0 } else { -2010.0 }) * 0.4 * 1.27 - 5.6;
+                assert_eq!(stats.num_trades, 1);
+                let expected_exit = open + if is_long { -0.00005 } else { 0.00005 };
+                assert!((stats.trades[0].exit_price - expected_exit).abs() < 1e-8);
+                assert!((stats.trades[0].pnl - pnl).abs() < 1e-8);
+                assert!((stats.final_cash - 10_000.0 - pnl).abs() < 1e-8);
+                assert_eq!(stats.equity_curve.len(), 3);
+                assert_eq!(stats.equity_curve.last(), Some(&stats.final_cash));
+            }
+        }
+    }
+
+    #[test]
     fn equity_curve_includes_initial_cash_and_final_liquidation() {
         let data = vec![Bar::new(0, 1.1000, 1.1000, 1.1000, 1.1000, 0.0)];
         let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0, 100_000.0, 1.0);
