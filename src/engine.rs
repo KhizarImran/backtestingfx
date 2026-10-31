@@ -2,6 +2,8 @@ use crate::broker::Broker;
 use crate::stats::Stats;
 use crate::strategy::Strategy;
 use crate::types::Bar;
+use crate::validation;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -68,9 +70,7 @@ impl Strategy for SmaCross {
     }
 }
 
-#[pymethods]
 impl Engine {
-    #[new]
     pub fn new(
         data: Vec<Bar>,
         initial_cash: f64,
@@ -90,6 +90,22 @@ impl Engine {
             ),
             equity_curve: Vec::new(),
         }
+    }
+}
+
+#[pymethods]
+impl Engine {
+    #[new]
+    fn py_new(
+        data: Vec<Bar>,
+        initial_cash: f64,
+        commission: f64,
+        spread: f64,
+        contract_size: f64,
+        quote_to_account: f64,
+    ) -> PyResult<Self> {
+        validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
+        Ok(Self::new(data, initial_cash, commission, spread, contract_size, quote_to_account))
     }
 
     #[pyo3(name = "run")]
@@ -135,14 +151,18 @@ impl Engine {
     }
 
     // ponytail: benchmark hook, runs the SMA strategy entirely in Rust via the native run() path.
-    pub fn run_native_sma(&mut self, fast: usize, slow: usize, lot_size: f64) -> Stats {
+    pub fn run_native_sma(&mut self, fast: usize, slow: usize, lot_size: f64) -> PyResult<Stats> {
+        validation::positive("lot_size", lot_size)?;
+        if fast == 0 || slow == 0 || fast > slow {
+            return Err(PyValueError::new_err("SMA windows must satisfy 1 <= fast <= slow"));
+        }
         let mut strat = SmaCross {
             fast,
             slow,
             lot_size,
             closes: Vec::new(),
         };
-        self.run(&mut strat)
+        Ok(self.run(&mut strat))
     }
 }
 

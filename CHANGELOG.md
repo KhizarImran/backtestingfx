@@ -9,6 +9,12 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Python constructors reject nonfinite or out-of-range broker settings. Order,
+  partial-close, stop-update, closing-price, and equity-price inputs are checked
+  before account mutation. Finite nonpositive partial sizes remain no-ops.
+- Optimization rejects malformed or nonfinite signals, including direct
+  `run_grid()` calls. Native SMA calls reject invalid sizes and windows before
+  simulation rather than risking a Rust panic.
 - SL/TP processing checks the midpoint open first: crossed stops fill at the
   adverse open, while crossed targets receive the favorable open, before any
   later range touches. Exit spread, commission, and conversion still apply.
@@ -24,6 +30,11 @@
   the exit-side spread (future exit commission is still charged only at closing).
 
 ### Migration
+- Python cash, contract size, conversion rate, opening sizes, prices, and supplied
+  SL/TP levels must be positive and finite; spread and commission must be finite
+  and nonnegative. Invalid numeric inputs now raise `ValueError`. Signal arrays
+  must be one-dimensional, finite, and contain one target per bar. See README
+  numeric input validation for partial-close and native SMA rules.
 - Gap-bar SL/TP fills now use the opening price instead of the configured level.
   An opening target also takes precedence over a later stop touch. Rerun affected
   backtests: PnL, equity, and strategy decisions can change; there is no legacy

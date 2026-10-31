@@ -195,6 +195,46 @@ Backtest(
 )
 ```
 
+### Numeric input validation
+
+`Backtest`, `Broker`, and `Engine` constructors reject invalid numeric settings
+with `ValueError` before simulation:
+
+| Input | Allowed values |
+| --- | --- |
+| `cash` (`initial_cash` on `Broker` and `Engine`) | Finite and greater than zero |
+| `commission`, `spread` | Finite and nonnegative |
+| `contract_size`, `quote_to_account` | Finite and greater than zero |
+
+Python `buy()` and `sell()` require positive finite lot sizes and prices.
+Supplied stop-loss and take-profit levels, including `update_sl()` values, must
+also be positive and finite. Levels are not restricted relative to the entry
+price: a trailing stop can lock in profit, and stops can still be widened.
+Closing prices and equity mark prices must be positive and finite.
+Rejected calls leave cash, positions, and position IDs unchanged.
+
+`close_partial()` rejects nonfinite sizes. Finite zero or negative sizes remain
+no-ops, and a size at or above the remaining position closes it completely.
+Unknown position IDs remain no-ops; `update_sl()` returns `False` for them.
+These behaviors require otherwise valid numeric arguments.
+
+`optimize()` requires each signal to be a one-dimensional numeric array with
+one finite target lot size per bar. Positive targets mean long, negative targets
+mean short, and zero means flat. Use zero during indicator warmup. Both NaN and
+infinity are rejected. Direct extension `run_grid()` calls also check every
+signal's length and finiteness before starting worker threads.
+`Engine.run_native_sma()` requires a positive finite lot size and integer
+windows satisfying `1 <= fast <= slow`.
+
+These checks apply at Python entry points, including direct extension calls.
+Native Rust callers remain responsible for supplying valid inputs to the
+simulation methods. OHLC data and timestamp validation are tracked separately
+in [#15](https://github.com/KhizarImran/backtestingfx/issues/15).
+
+**Migration:** replace invalid inputs that previously passed through, including
+zero initial cash, nonpositive opening sizes, and infinite signals. Calls now
+raise an error instead of silently producing invalid account state.
+
 ### Spread and price conventions
 
 OHLC prices are **midpoints** between bid and ask. `spread` is the constant full

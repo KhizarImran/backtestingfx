@@ -5,6 +5,7 @@ pub mod optimise;
 pub mod stats;
 pub mod strategy;
 pub mod types;
+mod validation;
 
 use pyo3::prelude::*;
 
@@ -18,5 +19,6 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::Position>()?;
     m.add_class::<types::Trade>()?;
     m.add_function(wrap_pyfunction!(optimise::run_grid, m)?)?;
+    m.add_function(wrap_pyfunction!(validation::config, m)?)?;
     Ok(())
 }
