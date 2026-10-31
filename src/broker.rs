@@ -286,6 +286,16 @@ impl Broker {
         self.positions()
     }
 
+    #[getter]
+    fn position_count(&self) -> usize {
+        self.positions.len()
+    }
+
+    #[getter]
+    fn has_positions(&self) -> bool {
+        !self.positions.is_empty()
+    }
+
     #[pyo3(name = "buy")]
     fn py_buy(
         &mut self,

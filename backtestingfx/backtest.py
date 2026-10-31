@@ -45,6 +45,14 @@ class Strategy:
         return self._broker.positions() if self._broker else []
 
     @property
+    def position_count(self):
+        return self._broker.position_count if self._broker is not None else 0
+
+    @property
+    def has_positions(self):
+        return self._broker.has_positions if self._broker is not None else False
+
+    @property
     def data(self):
         if not self._bars:
             return []

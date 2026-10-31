@@ -103,6 +103,21 @@ class MyStrategy(Strategy):
 | `self.close_partial(id, lot_size)` | Close part of a position, leaving the rest open |
 | `self.update_sl(id, stop_loss)` | Move a position's stop loss (returns `False` if the id is gone) |
 
+### Position inspection
+
+Use `self.has_positions` to check whether any positions are open, or
+`self.position_count` to read their count. Both read the current broker state
+in constant time without copying positions. Before a run, they return `False`
+and `0`. The direct Python `Broker` API provides the same read-only properties.
+
+`self.positions` still returns a list of position snapshots. Use it when you
+need IDs, sizes, or stop levels. For example:
+
+```python
+if not self.has_positions:
+    self.buy(0.1)
+```
+
 ### Trailing stops and scaling out
 
 `update_sl` moves the stop on an open position in place, so a trailing stop costs
@@ -113,7 +128,7 @@ keep trailing it.
 ```python
 class TrailingBreakout(Strategy):
     def next(self):
-        if not self.positions:
+        if not self.has_positions:
             self.buy(1.0, stop_loss=self._bar.close - 0.0050)
             return
 
@@ -180,6 +195,12 @@ The trade-off: a signal function can't see the broker, so path-dependent logic (
 stops, pyramiding, "exit after N bars") still needs `next()` and a plain loop. Indicator
 warmup must come out as `0.0`, not `NaN` — a `NaN` signal is rejected rather than
 silently treated as "hold".
+
+Precompute indicators once in `init()` when their values depend only on market
+data, then read the current value in `next()`. Python callbacks remain useful
+for decisions that depend on fills, cash, trailing stops, or partial closes.
+The [callback benchmark](examples/benchmark_callbacks.md) separates conversion,
+initialization, and simulation costs and compares these workloads.
 
 ## Backtest Parameters
 
@@ -359,6 +380,10 @@ in `Strategy::init()` or construct a fresh strategy for each run.
 ## Why Rust?
 
 The backtesting engine is written in Rust and compiled as a native Python extension via [PyO3](https://pyo3.rs). This means the event loop, broker simulation, and stats computation run at native speed while your strategy stays in plain Python.
+
+The [matched backtesting.py comparison](examples/benchmark.md) checks trades and
+full equity curves before timing both libraries. Current local results show a
+faster FX run phase but slower total runtime because data conversion dominates.
 
 ## Contributing and project direction
 

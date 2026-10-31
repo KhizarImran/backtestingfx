@@ -71,8 +71,10 @@ SMA and optimization examples use the included `data/EURUSD_1H.csv`.
 The HTML example generates synthetic data, writes
 `backtestingfx-report.html`, and attempts to open a browser. It requires the
 `report` extra. Comparison and benchmark scripts additionally require
-`python -m pip install backtesting`; report their versions and execution
-assumptions when sharing results.
+`python -m pip install backtesting==0.6.6`; report their versions and execution
+assumptions when sharing results. See [the matched comparison](examples/benchmark.md)
+for correctness checks and separate setup/run timings. Reference-comparison tests
+skip when the optional dependency is absent.
 
 ## Pull requests
 
