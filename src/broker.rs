@@ -59,7 +59,8 @@ impl Broker {
         });
     }
 
-    /// Midpoint OHLC triggers are inclusive; if both levels are touched, stop wins.
+    /// Inclusive midpoint triggers: process the open first, filling crossed stops
+    /// and targets there. Otherwise use the level, with stop-first range ordering.
     /// The engine calls this before the strategy, so new entries wait until the next bar.
     pub fn check_sl_tp(&mut self, bar: &Bar) {
         // Move the Vec out so settlement can borrow self while retain compacts
@@ -67,8 +68,19 @@ impl Broker {
         // without shifting the entire suffix after every triggered position.
         let mut positions = std::mem::take(&mut self.positions);
         positions.retain(|p| {
+            // The open is observed before the unknown intrabar path. A stop gap
+            // takes the adverse opening price; a target gap gets price improvement,
+            // even if the range later reaches the other level. settle applies spread.
+            let stop_at_open = p.stop_loss.is_some_and(|sl| {
+                if p.is_long { bar.open <= sl } else { bar.open >= sl }
+            });
+            let target_at_open = p.take_profit.is_some_and(|tp| {
+                if p.is_long { bar.open >= tp } else { bar.open <= tp }
+            });
             let fill = {
-                if p.is_long {
+                if stop_at_open || target_at_open {
+                    Some(bar.open)
+                } else if p.is_long {
                     let sl_hit = p.stop_loss.is_some_and(|sl| bar.low <= sl);
                     let tp_hit = p.take_profit.is_some_and(|tp| bar.high >= tp);
                     if sl_hit {
@@ -665,19 +677,104 @@ mod tests {
     }
 
     #[test]
-    fn gap_beyond_stop_currently_fills_at_level_not_open() {
-        // This records the current limitation; gap-aware fills are tracked in #8.
+    fn stops_at_or_beyond_open_fill_at_open_even_if_price_recovers() {
         for is_long in [true, false] {
-            let mut broker = test_broker(0.0, 0.0);
-            let (stop, open) = if is_long { (1.09, 1.08) } else { (1.11, 1.12) };
-            if is_long {
-                broker.buy(1.1, 1.0, 0, Some(stop), None);
-            } else {
-                broker.sell(1.1, 1.0, 0, Some(stop), None);
+            for exact_touch in [true, false] {
+                for recovers in [true, false] {
+                    for spread in [0.0, 0.0001] {
+                        let mut broker = Broker::new(10_000.0, 7.0, spread, 100_000.0, 1.27);
+                        let (stop, target, gap) = if is_long {
+                            (1.09, 1.11, 1.08)
+                        } else {
+                            (1.11, 1.09, 1.12)
+                        };
+                        let open = if exact_touch { stop } else { gap };
+                        if is_long {
+                            broker.buy(1.1, 1.0, 0, Some(stop), Some(target));
+                        } else {
+                            broker.sell(1.1, 1.0, 0, Some(stop), Some(target));
+                        }
+                        // Recovery can touch the target later, after the opening stop fill.
+                        let bar = if recovers {
+                            Bar::new(1, open, 1.12, 1.08, 1.1, 0.0)
+                        } else {
+                            Bar::new(1, open, open, open, open, 0.0)
+                        };
+                        broker.check_sl_tp(&bar);
+                        assert!(broker.positions.is_empty());
+                        assert_eq!(broker.trade_history.len(), 1);
+                        let trade = &broker.trade_history[0];
+                        let exit = open + if is_long { -spread / 2.0 } else { spread / 2.0 };
+                        let loss = if exact_touch { 1000.0 } else { 2000.0 };
+                        assert_close(trade.exit_price, exit);
+                        assert_close(trade.pnl, (-loss - spread * 100_000.0) * 1.27 - 14.0);
+                        assert_close(broker.cash - 10_000.0, trade.pnl);
+                        assert_eq!(trade.exit_timestamp, 1);
+                    }
+                }
             }
-            broker.check_sl_tp(&Bar::new(1, open, open, open, open, 0.0));
-            assert!(broker.positions.is_empty());
-            assert_close(broker.trade_history[0].exit_price, stop);
+        }
+    }
+
+    #[test]
+    fn targets_at_or_beyond_open_fill_before_a_later_stop() {
+        for is_long in [true, false] {
+            for exact_touch in [true, false] {
+                for reverses in [true, false] {
+                    for spread in [0.0, 0.0001] {
+                        let mut broker = Broker::new(10_000.0, 7.0, spread, 100_000.0, 1.27);
+                        let (stop, target, gap) = if is_long {
+                            (1.09, 1.11, 1.12)
+                        } else {
+                            (1.11, 1.09, 1.08)
+                        };
+                        let open = if exact_touch { target } else { gap };
+                        if is_long {
+                            broker.buy(1.1, 1.0, 0, Some(stop), Some(target));
+                        } else {
+                            broker.sell(1.1, 1.0, 0, Some(stop), Some(target));
+                        }
+                        let bar = if reverses {
+                            Bar::new(1, open, 1.12, 1.08, 1.1, 0.0)
+                        } else {
+                            Bar::new(1, open, open, open, open, 0.0)
+                        };
+                        broker.check_sl_tp(&bar);
+                        assert!(broker.positions.is_empty());
+                        assert_eq!(broker.trade_history.len(), 1);
+                        let trade = &broker.trade_history[0];
+                        let exit = open + if is_long { -spread / 2.0 } else { spread / 2.0 };
+                        let profit = if exact_touch { 1000.0 } else { 2000.0 };
+                        assert_close(trade.exit_price, exit);
+                        assert_close(trade.pnl, (profit - spread * 100_000.0) * 1.27 - 14.0);
+                        assert_close(broker.cash - 10_000.0, trade.pnl);
+                        assert_eq!(trade.exit_timestamp, 1);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn opening_bid_or_ask_crossing_a_level_does_not_trigger_a_midpoint_exit() {
+        for is_long in [true, false] {
+            for use_stop in [true, false] {
+                let mut broker = test_broker(7.0, 0.0001);
+                let level = if is_long == use_stop { 1.09 } else { 1.11 };
+                // A bid/ask crosses the level while the midpoint remains inside it.
+                let open = level + if is_long == use_stop { 0.00001 } else { -0.00001 };
+                let sl = use_stop.then_some(level);
+                let tp = (!use_stop).then_some(level);
+                if is_long {
+                    broker.buy(1.1, 1.0, 0, sl, tp);
+                } else {
+                    broker.sell(1.1, 1.0, 0, sl, tp);
+                }
+                broker.check_sl_tp(&Bar::new(1, open, open, open, open, 0.0));
+                assert_eq!(broker.positions.len(), 1);
+                assert!(broker.trade_history.is_empty());
+                assert_close(broker.cash, 9993.0);
+            }
         }
     }
 }

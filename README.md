@@ -222,15 +222,27 @@ Supply midpoint data: convert bid-only or ask-only data before running a backtes
 
 ### Intrabar stop-loss and take-profit policy
 
-OHLC bars do not reveal the order in which prices were visited. If a bar touches
-both a position's stop-loss and take-profit, the broker deterministically chooses
-the **stop-loss first**, for both long and short positions. Exact touches count
-as hits. This conservative assumption can differ from the outcome on tick data;
-it does not reconstruct the intrabar price path.
+The broker checks the midpoint **open first** for existing positions:
+
+- A long stop triggers when open <= SL; a short stop triggers when open >= SL.
+  It fills at the open, accepting the worse price if the market gaps past the stop.
+- A long target triggers when open >= TP; a short target triggers when open <= TP.
+  It fills at the open, giving price improvement if the market gaps past the target.
+- An opening fill takes precedence over any later high/low touch of the other
+  level. Exact touches at the open count as hits.
+
+If neither level triggers at the open, stops and targets fill at their configured
+midpoint levels when touched by the bar's range. OHLC bars do not reveal the order
+of those later touches. If both are touched, the broker chooses the
+**stop-loss first**, for both long and short positions. Exact touches count as
+hits. This conservative assumption can differ from the outcome on tick data;
+it does not reconstruct the intrabar price path. All fills apply exit-side spread
+(bid for longs, ask for shorts) and exit commission using the usual cost model.
 
 For example, a long entered at midpoint `1.1000`, with SL `1.0900` and TP
-`1.1100`, exits at the stop midpoint when the next bar has low `1.0800` and
-high `1.1200`. Bid/ask spread and exit commission still apply to the fill.
+`1.1100`, exits at the stop midpoint when the next bar opens at `1.1000` and
+has low `1.0800` and high `1.1200`. Bid/ask spread and exit commission still
+apply to the fill.
 
 The engine checks existing positions' SL/TP **before** calling the strategy for
 each bar. Orders opened by `next()` fill at that bar's close; their SL/TP levels
@@ -238,11 +250,17 @@ are first checked on the following bar. The entry bar's earlier high/low is not
 replayed against the new position. A position opened on the final bar instead
 undergoes the usual final liquidation at that bar's close.
 
-**Current gap limitation:** SL/TP fills use the configured midpoint level, even
-if the bar opens beyond it. If both levels are touched, stop-first still applies
-regardless of the open. Such fills may be unattainable after a gap; gap-aware
-execution is tracked in [#8](https://github.com/KhizarImran/backtestingfx/issues/8).
-This policy is fixed, with no configurable intrabar ordering option.
+For a gap example, a long with SL `1.0950` exits at midpoint `1.0900` if the
+next bar opens there. A long with TP `1.1100` exits at midpoint `1.1200` if the
+next bar opens there, even if that bar later falls through the stop. A short
+uses the opposite inequalities. This policy assumes execution at the opening
+quote without additional slippage or liquidity constraints; it has no
+configurable intrabar ordering option.
+
+**Migration:** previous versions always used the configured SL/TP level and
+chose the stop whenever the range touched both levels, regardless of the open.
+Gap-bar fills, PnL, equity, and later strategy decisions can therefore change.
+Rerun affected backtests; there is no setting to restore the old gap behavior.
 
 ### Trading non-USD pairs
 
