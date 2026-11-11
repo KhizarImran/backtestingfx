@@ -204,6 +204,12 @@ initialization, and simulation costs and compares these workloads.
 
 ## Backtest Parameters
 
+Optional [swaps and overnight financing](SWAPS.md) use a `SwapConfig` passed as
+`Backtest(df, StrategyClass, swap=SwapConfig(long=-7.0, short=2.0))`. Rates are
+signed account-currency cash per lot, with configurable local rollover time,
+timezone, weekday multipliers, and holiday overrides. Swaps are disabled by
+default. Import `SwapConfig` from `backtestingfx`; see `examples/swaps.py`.
+
 ```python
 Backtest(
     df,                       # pandas DataFrame with OHLCV columns
@@ -213,6 +219,7 @@ Backtest(
     spread=0.0,               # full bid–ask width in price units (0.0001 = 1 EURUSD pip)
     contract_size=100000.0,   # standard FX lot size, don't change this
     quote_to_account=1.0,     # conversion rate from quote currency to USD
+    swap=None,                # optional SwapConfig; disabled by default
 )
 ```
 

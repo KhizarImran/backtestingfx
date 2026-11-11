@@ -10,6 +10,7 @@
 use crate::broker::Broker;
 use crate::engine::Engine;
 use crate::stats::Stats;
+use crate::swap::{SwapError, SwapPlan};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -19,7 +20,7 @@ use pyo3::prelude::*;
 /// *has* to build its own Broker, which is what makes it safe to run many of these
 /// across threads on one Engine. (It also means, unlike `Engine::run`, that calling
 /// it twice gives the same answer twice.)
-fn simulate(engine: &Engine, target: &[f64]) -> Stats {
+fn simulate(engine: &Engine, target: &[f64], plan: Option<&SwapPlan>) -> Result<Stats, SwapError> {
     let mut broker = Broker::new(
         engine.broker.initial_cash,
         engine.broker.commission,
@@ -29,8 +30,12 @@ fn simulate(engine: &Engine, target: &[f64]) -> Stats {
     );
     let mut equity_curve = Vec::with_capacity(engine.data.len() + 1);
     equity_curve.push(broker.initial_cash);
+    let mut rollover = plan.map(SwapPlan::cursor);
 
     for (bar, &want) in engine.data.iter().zip(target) {
+        if let Some(cursor) = &mut rollover {
+            cursor.apply_through(bar.timestamp, &mut broker)?;
+        }
         broker.check_sl_tp(bar);
 
         // signed exposure: longs count positive, shorts negative
@@ -61,7 +66,7 @@ fn simulate(engine: &Engine, target: &[f64]) -> Stats {
         *equity_curve.last_mut().unwrap() = broker.cash;
     }
 
-    Stats::compute(&broker, &equity_curve)
+    Ok(Stats::compute(&broker, &equity_curve))
 }
 
 /// Run one simulation per signal array, in parallel, and return the Stats in order.
@@ -92,6 +97,8 @@ pub fn run_grid(
     }
 
     let engine: &Engine = &engine;
+    let plan = engine.swap_plan()?;
+    let plan = plan.as_ref();
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
     let chunk = signals.len().div_ceil(threads).max(1);
 
@@ -106,7 +113,7 @@ pub fn run_grid(
                 .chunks(chunk)
                 .map(|slice| {
                     scope.spawn(move || {
-                        slice.iter().map(|s| simulate(engine, s)).collect::<Vec<_>>()
+                        slice.iter().map(|s| simulate(engine, s, plan)).collect::<Vec<_>>()
                     })
                 })
                 .collect();
@@ -114,9 +121,9 @@ pub fn run_grid(
             handles
                 .into_iter()
                 .flat_map(|h| h.join().unwrap())
-                .collect()
+                .collect::<Result<Vec<_>, SwapError>>()
         })
-    }))
+    })?)
 }
 
 #[cfg(test)]
@@ -136,7 +143,7 @@ mod tests {
     #[test]
     fn signal_opens_holds_and_liquidates() {
         let engine = test_engine();
-        let stats = simulate(&engine, &[1.0, 1.0]);
+        let stats = simulate(&engine, &[1.0, 1.0], None).unwrap();
 
         // bought 1 lot at 1.1000, held through bar 2, liquidated at 1.2000
         // (1.2 - 1.1) * 1.0 * 100_000 = 10_000
@@ -146,7 +153,7 @@ mod tests {
 
     #[test]
     fn flat_signal_never_trades() {
-        let stats = simulate(&test_engine(), &[0.0, 0.0]);
+        let stats = simulate(&test_engine(), &[0.0, 0.0], None).unwrap();
 
         assert_eq!(stats.num_trades, 0);
         assert_eq!(stats.final_cash, 10_000.0);
@@ -154,7 +161,7 @@ mod tests {
 
     #[test]
     fn short_signal_loses_when_price_rises() {
-        let stats = simulate(&test_engine(), &[-1.0, -1.0]);
+        let stats = simulate(&test_engine(), &[-1.0, -1.0], None).unwrap();
 
         assert!((stats.final_cash - 0.0).abs() < 1e-6); // lost the whole 10_000
     }
@@ -164,10 +171,35 @@ mod tests {
         let engine = test_engine();
 
         // the bug this design rules out: state leaking from one run into the next
-        let first = simulate(&engine, &[1.0, 1.0]);
-        let second = simulate(&engine, &[1.0, 1.0]);
+        let first = simulate(&engine, &[1.0, 1.0], None).unwrap();
+        let second = simulate(&engine, &[1.0, 1.0], None).unwrap();
 
         assert_eq!(first.final_cash, second.final_cash);
         assert_eq!(second.num_trades, 1);
+    }
+
+    #[test]
+    fn native_and_signal_financing_agree_and_workers_have_fresh_cursors() {
+        use crate::strategy::Strategy;
+        use crate::swap::SwapConfig;
+        struct Hold;
+        impl Strategy for Hold {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                if broker.positions.is_empty() { broker.buy(bar.close, 0.4, bar.timestamp, None, None); }
+            }
+        }
+        let data = [0, 86400, 172800].map(|timestamp| Bar::new(timestamp, 1.1, 1.1, 1.1, 1.1, 0.0)).to_vec();
+        let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
+        let config = SwapConfig::new(-10.0, 2.0).unwrap().with_weekday_multipliers([1.0; 7]).unwrap();
+        let plan = config.plan(&engine.data).unwrap();
+        let native = engine.run_with_swap(&mut Hold, &config).unwrap();
+        for _ in 0..2 {
+            let signal = simulate(&engine, &[0.4; 3], Some(&plan)).unwrap();
+            assert_eq!(signal.equity_curve, native.equity_curve);
+            assert_eq!(signal.final_cash, native.final_cash);
+            assert_eq!(signal.total_swap, -8.0);
+            assert_eq!(signal.trades[0].swap, -8.0);
+            assert_eq!(signal.swap_charges.len(), 2);
+        }
     }
 }

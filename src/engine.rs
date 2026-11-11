@@ -1,12 +1,14 @@
 use crate::broker::Broker;
 use crate::stats::Stats;
 use crate::strategy::Strategy;
+use crate::swap::{SwapConfig, SwapError, SwapPlan};
 use crate::types::Bar;
 use crate::validation;
 use pyo3::buffer::{Element, PyBuffer, ReadOnlyCell};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+use std::convert::Infallible;
 
 fn column_slice<'a, T: Element>(
     py: Python<'a>,
@@ -37,12 +39,44 @@ pub struct Engine {
     pub data: Vec<Bar>,
     pub broker: Broker,
     pub equity_curve: Vec<f64>,
+    pub(crate) swap: Option<SwapConfig>,
 }
 
 impl Engine {
     /// Run an independent simulation using the broker's current configuration.
     /// Strategies with their own mutable state should reset it in `init`.
     pub fn run(&mut self, strategy: &mut dyn Strategy) -> Stats {
+        let result = self.run_loop(strategy, |_, _| Ok::<(), Infallible>(()));
+        match result {
+            Ok(stats) => stats,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Run with validated financing, preparing the calendar from the current data.
+    pub fn run_with_swap(&mut self, strategy: &mut dyn Strategy, swap: &SwapConfig) -> Result<Stats, SwapError> {
+        let plan = swap.plan(&self.data)?;
+        let mut cursor = plan.cursor();
+        self.run_loop(strategy, |bar, broker| cursor.apply_through(bar.timestamp, broker))
+    }
+
+    fn run_configured(&mut self, strategy: &mut dyn Strategy) -> Result<Stats, SwapError> {
+        match self.swap_plan()? {
+            Some(plan) => {
+                let mut cursor = plan.cursor();
+                self.run_loop(strategy, |bar, broker| cursor.apply_through(bar.timestamp, broker))
+            }
+            None => Ok(self.run(strategy)),
+        }
+    }
+
+    pub(crate) fn swap_plan(&self) -> Result<Option<SwapPlan>, SwapError> {
+        self.swap.as_ref().map(|swap| swap.plan(&self.data)).transpose()
+    }
+
+    fn run_loop<E>(&mut self, strategy: &mut dyn Strategy,
+        mut before_bar: impl FnMut(&Bar, &mut Broker) -> Result<(), E>,
+    ) -> Result<Stats, E> {
         self.broker = Broker::new(
             self.broker.initial_cash,
             self.broker.commission,
@@ -55,6 +89,7 @@ impl Engine {
 
         strategy.init(&self.data);
         for bar in &self.data {
+            before_bar(bar, &mut self.broker)?;
             self.broker.check_sl_tp(bar);
             strategy.next(bar, &mut self.broker);
             self.equity_curve.push(self.broker.equity(bar.close));
@@ -63,7 +98,7 @@ impl Engine {
             self.broker.close_all(last_bar.close, last_bar.timestamp);
             *self.equity_curve.last_mut().unwrap() = self.broker.cash;
         }
-        Stats::compute(&self.broker, &self.equity_curve)
+        Ok(Stats::compute(&self.broker, &self.equity_curve))
     }
 }
 
@@ -121,6 +156,7 @@ impl Engine {
                 quote_to_account,
             ),
             equity_curve: Vec::new(),
+            swap: None,
         }
     }
 }
@@ -128,6 +164,8 @@ impl Engine {
 #[pymethods]
 impl Engine {
     #[staticmethod]
+    #[expect(clippy::too_many_arguments, reason = "preserve existing constructor arguments and add keyword-only swap configuration")]
+    #[pyo3(signature = (columns, initial_cash, commission, spread, contract_size, quote_to_account, *, swap=None))]
     fn _from_columns(
         py: Python<'_>,
         columns: (PyBuffer<i64>, [PyBuffer<f64>; 5]),
@@ -136,6 +174,7 @@ impl Engine {
         spread: f64,
         contract_size: f64,
         quote_to_account: f64,
+        swap: Option<SwapConfig>,
     ) -> PyResult<Self> {
         validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
         let (timestamps, values) = columns;
@@ -159,12 +198,15 @@ impl Engine {
                 )
             })
             .collect();
-        Ok(Self::new(
+        let mut engine = Self::new(
             data, initial_cash, commission, spread, contract_size, quote_to_account,
-        ))
+        );
+        engine.swap = swap;
+        Ok(engine)
     }
 
     #[new]
+    #[pyo3(signature = (data, initial_cash, commission, spread, contract_size, quote_to_account, *, swap=None))]
     fn py_new(
         data: Vec<Bar>,
         initial_cash: f64,
@@ -172,13 +214,18 @@ impl Engine {
         spread: f64,
         contract_size: f64,
         quote_to_account: f64,
+        swap: Option<SwapConfig>,
     ) -> PyResult<Self> {
         validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
-        Ok(Self::new(data, initial_cash, commission, spread, contract_size, quote_to_account))
+        let mut engine = Self::new(data, initial_cash, commission, spread, contract_size, quote_to_account);
+        engine.swap = swap;
+        Ok(engine)
     }
 
     #[pyo3(name = "run")]
     pub fn run_py(&mut self, py: Python<'_>, strategy: Py<PyAny>) -> PyResult<Stats> {
+        let plan = self.swap_plan()?;
+        let mut rollover = plan.as_ref().map(SwapPlan::cursor);
         self.equity_curve.clear();
         self.equity_curve.push(self.broker.initial_cash);
 
@@ -200,6 +247,9 @@ impl Engine {
         for bar in &self.data {
             {
                 let mut b = broker_py.borrow_mut(py);
+                if let Some(cursor) = &mut rollover {
+                    cursor.apply_through(bar.timestamp, &mut b)?;
+                }
                 b.check_sl_tp(bar);
             }
             strategy
@@ -231,12 +281,12 @@ impl Engine {
             lot_size,
             closes: Vec::new(),
         };
-        Ok(self.run(&mut strat))
+        Ok(self.run_configured(&mut strat)?)
     }
 
     // Benchmark baseline with the same broker, equity, statistics, and finalization paths.
-    fn _run_native_noop(&mut self) -> Stats {
-        self.run(&mut Noop)
+    fn _run_native_noop(&mut self) -> PyResult<Stats> {
+        Ok(self.run_configured(&mut Noop)?)
     }
 }
 

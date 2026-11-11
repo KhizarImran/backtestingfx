@@ -1,5 +1,5 @@
 use crate::broker::Broker;
-use crate::types::Trade;
+use crate::types::{SwapCharge, Trade};
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -32,6 +32,10 @@ pub struct Stats {
     pub equity_curve: Vec<f64>,
     #[pyo3(get)]
     pub trades: Vec<Trade>,
+    #[pyo3(get)]
+    pub total_swap: f64,
+    #[pyo3(get)]
+    pub swap_charges: Vec<SwapCharge>,
 }
 
 fn sharpe_ratio(equity_curve: &[f64]) -> f64 {
@@ -141,6 +145,8 @@ impl Stats {
             sharpe_ratio,
             equity_curve: equity_curve.to_vec(),
             trades: broker.trade_history.clone(),
+            total_swap: broker.total_swap,
+            swap_charges: broker.swap_charges.clone(),
         }
     }
 }
@@ -160,6 +166,7 @@ impl std::fmt::Display for Stats {
                Worst Trade:    {:.5}\n\
                Profit Factor:  {:.2}\n\
                Max Drawdown:   {:.2}%\n\
+               Swap Cash Flow: {:.2}\n\
                Sharpe Ratio:   {:.4} (unannualized)",
             self.initial_cash,
             self.final_cash,
@@ -171,6 +178,7 @@ impl std::fmt::Display for Stats {
             self.worst_trade,
             self.profit_factor,
             self.max_drawdown_pct,
+            self.total_swap,
             self.sharpe_ratio
         )
     }

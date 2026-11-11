@@ -139,6 +139,8 @@ class Backtest:
         spread=0.0,
         contract_size=100000.0,
         quote_to_account=1.0,
+        *,
+        swap=None,
     ):
         _rust._validate_config(cash, commission, spread, contract_size, quote_to_account)
         self._df = df
@@ -148,6 +150,9 @@ class Backtest:
         self._spread = spread
         self._contract_size = contract_size
         self._quote_to_account = quote_to_account
+        if swap is not None and not isinstance(swap, _rust.SwapConfig):
+            raise TypeError("swap must be a SwapConfig or None")
+        self._swap = swap
         self._stats = None
         self._report_df = None
 
@@ -227,6 +232,7 @@ class Backtest:
             self._spread,
             self._contract_size,
             self._quote_to_account,
+            swap=self._swap,
         )
 
     def run(self):
@@ -306,4 +312,5 @@ class Backtest:
             spread=self._spread,
             contract_size=self._contract_size,
             quote_to_account=self._quote_to_account,
+            swap=self._swap,
         )

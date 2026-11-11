@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- Optional `SwapConfig` for signed long/short overnight financing in account
+  currency per lot. Configure local rollover time, IANA timezone, weekday weights,
+  and holiday date overrides. Swaps are disabled by default.
+- Separate position/trade financing, total swap cash flow, dated posting records,
+  and HTML report financing details. Native, Python, and signal runs share the
+  rollover policy and reconcile partial-close financing without charging twice.
 - Constant-time Python `Strategy` and `Broker` properties `has_positions` and
   `position_count`, avoiding position-list copies for presence and count checks.
 - A callback benchmark with separate conversion, engine construction,

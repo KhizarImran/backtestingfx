@@ -1,2 +1,2 @@
-from backtestingfx._backtestingfx import Bar, Broker, Engine, Stats, Trade  # type: ignore
+from backtestingfx._backtestingfx import Bar, Broker, Engine, Stats, SwapConfig, SwapCharge, Trade  # type: ignore
 from backtestingfx.backtest import Strategy, Backtest

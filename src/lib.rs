@@ -4,6 +4,7 @@ pub mod engine;
 pub mod optimise;
 pub mod stats;
 pub mod strategy;
+pub mod swap;
 pub mod types;
 mod validation;
 
@@ -18,6 +19,8 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<engine::Engine>()?;
     m.add_class::<types::Position>()?;
     m.add_class::<types::Trade>()?;
+    m.add_class::<swap::SwapConfig>()?;
+    m.add_class::<types::SwapCharge>()?;
     m.add_function(wrap_pyfunction!(optimise::run_grid, m)?)?;
     m.add_function(wrap_pyfunction!(validation::config, m)?)?;
     Ok(())
