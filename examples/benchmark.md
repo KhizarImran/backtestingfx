@@ -1,5 +1,9 @@
 # Matched comparison with backtesting.py
 
+The timings below precede the issue #53 ingestion improvement. See the
+[ingestion benchmark](benchmark_ingestion.md) for current setup and total times
+using the same matched execution policy.
+
 `compare_bt.py` verifies equivalent accounting before `benchmark.py` compares
 speed. These replace the earlier scripts that used different position sizes,
 fill timing, and SMA calculations and only printed approximate results.

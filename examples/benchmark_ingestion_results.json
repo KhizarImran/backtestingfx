@@ -1,0 +1,723 @@
+{
+  "before": {
+    "label": "main-9fe8523",
+    "metadata": {
+      "python": "3.14.4 (main, Apr  8 2026, 04:02:31) [GCC 15.2.0]",
+      "platform": "Linux-7.0.2-6-pve-x86_64-with-glibc2.43",
+      "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+      "pyo3_lock_version": "0.28.3",
+      "rust": "unavailable",
+      "git_head": "9fe8523846f5b9c60636c86cd7e81c02c46a41dc",
+      "package_versions": {
+        "backtestingfx": "0.2.0",
+        "pandas": "3.1.0",
+        "numpy": "2.5.4",
+        "backtesting": "0.6.6"
+      }
+    },
+    "repeats": 5,
+    "source_diff": "",
+    "datasets": [
+      {
+        "bars": 50000,
+        "setup_breakdown": {
+          "medians": {
+            "snapshot_seconds": 0.000291831,
+            "ingestion_seconds": 1.833340256,
+            "history_seconds": 0.002885024,
+            "noop_run_seconds": 0.007628015,
+            "setup_seconds": 1.836442139,
+            "total_seconds": 1.844070154
+          },
+          "samples": [
+            {
+              "snapshot_seconds": 0.000303888,
+              "ingestion_seconds": 1.792976406,
+              "history_seconds": 0.002885024,
+              "noop_run_seconds": 0.007382675,
+              "setup_seconds": 1.796165318,
+              "total_seconds": 1.803547993
+            },
+            {
+              "snapshot_seconds": 0.000291831,
+              "ingestion_seconds": 1.851443757,
+              "history_seconds": 0.002861435,
+              "noop_run_seconds": 0.00770891,
+              "setup_seconds": 1.854597023,
+              "total_seconds": 1.862305933
+            },
+            {
+              "snapshot_seconds": 0.000280768,
+              "ingestion_seconds": 1.792588905,
+              "history_seconds": 0.002918455,
+              "noop_run_seconds": 0.008223742,
+              "setup_seconds": 1.795788128,
+              "total_seconds": 1.80401187
+            },
+            {
+              "snapshot_seconds": 0.000279756,
+              "ingestion_seconds": 1.833340256,
+              "history_seconds": 0.002822127,
+              "noop_run_seconds": 0.007628015,
+              "setup_seconds": 1.836442139,
+              "total_seconds": 1.844070154
+            },
+            {
+              "snapshot_seconds": 0.000296651,
+              "ingestion_seconds": 1.887022155,
+              "history_seconds": 0.00300632,
+              "noop_run_seconds": 0.007507326,
+              "setup_seconds": 1.890325126,
+              "total_seconds": 1.897832452
+            }
+          ]
+        },
+        "matched": {
+          "backtesting.py": {
+            "medians": {
+              "setup_seconds": 0.001566161,
+              "simulation_seconds": 0.224214102,
+              "total_seconds": 0.225829669
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.001615567,
+                "simulation_seconds": 0.224214102,
+                "total_seconds": 0.225829669
+              },
+              {
+                "setup_seconds": 0.001566161,
+                "simulation_seconds": 0.21510147,
+                "total_seconds": 0.216667631
+              },
+              {
+                "setup_seconds": 0.001331501,
+                "simulation_seconds": 0.221734985,
+                "total_seconds": 0.223066486
+              },
+              {
+                "setup_seconds": 0.001425214,
+                "simulation_seconds": 0.231568062,
+                "total_seconds": 0.232993276
+              },
+              {
+                "setup_seconds": 0.001721656,
+                "simulation_seconds": 0.232301519,
+                "total_seconds": 0.234023175
+              }
+            ]
+          },
+          "backtestingfx": {
+            "medians": {
+              "setup_seconds": 1.856924053,
+              "simulation_seconds": 0.037362885,
+              "total_seconds": 1.894286938
+            },
+            "samples": [
+              {
+                "setup_seconds": 1.867255261,
+                "simulation_seconds": 0.036260394,
+                "total_seconds": 1.903515655
+              },
+              {
+                "setup_seconds": 1.808406015,
+                "simulation_seconds": 0.036594037,
+                "total_seconds": 1.845000052
+              },
+              {
+                "setup_seconds": 1.857064428,
+                "simulation_seconds": 0.039628977,
+                "total_seconds": 1.896693405
+              },
+              {
+                "setup_seconds": 1.845368299,
+                "simulation_seconds": 0.040478733,
+                "total_seconds": 1.885847032
+              },
+              {
+                "setup_seconds": 1.856924053,
+                "simulation_seconds": 0.037362885,
+                "total_seconds": 1.894286938
+              }
+            ]
+          }
+        },
+        "matching_trades": 874,
+        "final_equity": 9178.570000000142,
+        "equivalence": "passed",
+        "peak_rss_bytes": 133636096
+      },
+      {
+        "bars": 100000,
+        "setup_breakdown": {
+          "medians": {
+            "snapshot_seconds": 0.000465444,
+            "ingestion_seconds": 3.7496935,
+            "history_seconds": 0.006561467,
+            "noop_run_seconds": 0.016528141,
+            "setup_seconds": 3.75671681,
+            "total_seconds": 3.773561518
+          },
+          "samples": [
+            {
+              "snapshot_seconds": 0.000699205,
+              "ingestion_seconds": 3.741345955,
+              "history_seconds": 0.007627192,
+              "noop_run_seconds": 0.015931518,
+              "setup_seconds": 3.749672352,
+              "total_seconds": 3.76560387
+            },
+            {
+              "snapshot_seconds": 0.000474211,
+              "ingestion_seconds": 3.523655453,
+              "history_seconds": 0.006700069,
+              "noop_run_seconds": 0.016528141,
+              "setup_seconds": 3.530829733,
+              "total_seconds": 3.547357874
+            },
+            {
+              "snapshot_seconds": 0.000461843,
+              "ingestion_seconds": 3.7496935,
+              "history_seconds": 0.006561467,
+              "noop_run_seconds": 0.016844708,
+              "setup_seconds": 3.75671681,
+              "total_seconds": 3.773561518
+            },
+            {
+              "snapshot_seconds": 0.000444122,
+              "ingestion_seconds": 3.886251196,
+              "history_seconds": 0.006405548,
+              "noop_run_seconds": 0.018291174,
+              "setup_seconds": 3.893100866,
+              "total_seconds": 3.91139204
+            },
+            {
+              "snapshot_seconds": 0.000465444,
+              "ingestion_seconds": 3.866095333,
+              "history_seconds": 0.006056204,
+              "noop_run_seconds": 0.016389995,
+              "setup_seconds": 3.872616981,
+              "total_seconds": 3.889006976
+            }
+          ]
+        },
+        "matched": {
+          "backtesting.py": {
+            "medians": {
+              "setup_seconds": 0.001603743,
+              "simulation_seconds": 0.48502602,
+              "total_seconds": 0.486873896
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.001636049,
+                "simulation_seconds": 0.438138783,
+                "total_seconds": 0.439774832
+              },
+              {
+                "setup_seconds": 0.001847876,
+                "simulation_seconds": 0.48502602,
+                "total_seconds": 0.486873896
+              },
+              {
+                "setup_seconds": 0.001603743,
+                "simulation_seconds": 0.443776133,
+                "total_seconds": 0.445379876
+              },
+              {
+                "setup_seconds": 0.001574815,
+                "simulation_seconds": 0.496544407,
+                "total_seconds": 0.498119222
+              },
+              {
+                "setup_seconds": 0.001558432,
+                "simulation_seconds": 0.527635963,
+                "total_seconds": 0.529194395
+              }
+            ]
+          },
+          "backtestingfx": {
+            "medians": {
+              "setup_seconds": 3.94171082,
+              "simulation_seconds": 0.086814655,
+              "total_seconds": 4.02147922
+            },
+            "samples": [
+              {
+                "setup_seconds": 3.805811071,
+                "simulation_seconds": 0.089570511,
+                "total_seconds": 3.895381582
+              },
+              {
+                "setup_seconds": 4.059540861,
+                "simulation_seconds": 0.096803159,
+                "total_seconds": 4.15634402
+              },
+              {
+                "setup_seconds": 3.904625989,
+                "simulation_seconds": 0.080985531,
+                "total_seconds": 3.98561152
+              },
+              {
+                "setup_seconds": 3.94171082,
+                "simulation_seconds": 0.0797684,
+                "total_seconds": 4.02147922
+              },
+              {
+                "setup_seconds": 4.04313683,
+                "simulation_seconds": 0.086814655,
+                "total_seconds": 4.129951485
+              }
+            ]
+          }
+        },
+        "matching_trades": 1749,
+        "final_equity": 8353.820000000283,
+        "equivalence": "passed",
+        "peak_rss_bytes": 152469504
+      }
+    ]
+  },
+  "after": {
+    "label": "issue-53-final",
+    "metadata": {
+      "python": "3.14.4 (main, Apr  8 2026, 04:02:31) [GCC 15.2.0]",
+      "platform": "Linux-7.0.2-6-pve-x86_64-with-glibc2.43",
+      "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+      "pyo3_lock_version": "0.28.3",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "git_head": "9fe8523846f5b9c60636c86cd7e81c02c46a41dc",
+      "package_versions": {
+        "backtestingfx": "0.2.0",
+        "pandas": "3.1.0",
+        "numpy": "2.5.4",
+        "backtesting": "0.6.6"
+      }
+    },
+    "repeats": 5,
+    "source_diff": "backtestingfx/backtest.py | 77 ++++++++++++++++++++++++++++++++++-------------\n src/engine.rs             | 68 +++++++++++++++++++++++++++++++++++++++--\n 2 files changed, 121 insertions(+), 24 deletions(-)",
+    "datasets": [
+      {
+        "bars": 50000,
+        "setup_breakdown": {
+          "medians": {
+            "snapshot_seconds": 0.000334097,
+            "ingestion_seconds": 0.001311147,
+            "history_seconds": 0.002021688,
+            "noop_run_seconds": 0.007300388,
+            "setup_seconds": 0.003667311,
+            "total_seconds": 0.011235822
+          },
+          "samples": [
+            {
+              "snapshot_seconds": 0.000425784,
+              "ingestion_seconds": 0.001858278,
+              "history_seconds": 0.002148302,
+              "noop_run_seconds": 0.007269903,
+              "setup_seconds": 0.004432364,
+              "total_seconds": 0.011702267
+            },
+            {
+              "snapshot_seconds": 0.000334097,
+              "ingestion_seconds": 0.001257965,
+              "history_seconds": 0.002021688,
+              "noop_run_seconds": 0.007300388,
+              "setup_seconds": 0.00361375,
+              "total_seconds": 0.010914138
+            },
+            {
+              "snapshot_seconds": 0.000304396,
+              "ingestion_seconds": 0.001209861,
+              "history_seconds": 0.001998592,
+              "noop_run_seconds": 0.007282928,
+              "setup_seconds": 0.003512849,
+              "total_seconds": 0.010795777
+            },
+            {
+              "snapshot_seconds": 0.000332039,
+              "ingestion_seconds": 0.001311147,
+              "history_seconds": 0.002109798,
+              "noop_run_seconds": 0.007482838,
+              "setup_seconds": 0.003752984,
+              "total_seconds": 0.011235822
+            },
+            {
+              "snapshot_seconds": 0.000361728,
+              "ingestion_seconds": 0.001311691,
+              "history_seconds": 0.001993892,
+              "noop_run_seconds": 0.007714652,
+              "setup_seconds": 0.003667311,
+              "total_seconds": 0.011381963
+            }
+          ]
+        },
+        "matched": {
+          "backtesting.py": {
+            "medians": {
+              "setup_seconds": 0.001452302,
+              "simulation_seconds": 0.22476298,
+              "total_seconds": 0.226281959
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.001518979,
+                "simulation_seconds": 0.22476298,
+                "total_seconds": 0.226281959
+              },
+              {
+                "setup_seconds": 0.001452302,
+                "simulation_seconds": 0.226609809,
+                "total_seconds": 0.228062111
+              },
+              {
+                "setup_seconds": 0.001211616,
+                "simulation_seconds": 0.225250313,
+                "total_seconds": 0.226461929
+              },
+              {
+                "setup_seconds": 0.00146627,
+                "simulation_seconds": 0.22060781,
+                "total_seconds": 0.22207408
+              },
+              {
+                "setup_seconds": 0.001268431,
+                "simulation_seconds": 0.222568752,
+                "total_seconds": 0.223837183
+              }
+            ]
+          },
+          "backtestingfx": {
+            "medians": {
+              "setup_seconds": 0.003946305,
+              "simulation_seconds": 0.035846046,
+              "total_seconds": 0.039755365
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.004225312,
+                "simulation_seconds": 0.036008662,
+                "total_seconds": 0.040233974
+              },
+              {
+                "setup_seconds": 0.003946305,
+                "simulation_seconds": 0.035800007,
+                "total_seconds": 0.039746312
+              },
+              {
+                "setup_seconds": 0.003595237,
+                "simulation_seconds": 0.039420195,
+                "total_seconds": 0.043015432
+              },
+              {
+                "setup_seconds": 0.003909319,
+                "simulation_seconds": 0.035846046,
+                "total_seconds": 0.039755365
+              },
+              {
+                "setup_seconds": 0.004100305,
+                "simulation_seconds": 0.03558548,
+                "total_seconds": 0.039685785
+              }
+            ]
+          }
+        },
+        "matching_trades": 874,
+        "final_equity": 9178.570000000142,
+        "equivalence": "passed",
+        "peak_rss_bytes": 132546560
+      },
+      {
+        "bars": 100000,
+        "setup_breakdown": {
+          "medians": {
+            "snapshot_seconds": 0.00053925,
+            "ingestion_seconds": 0.002414794,
+            "history_seconds": 0.004070088,
+            "noop_run_seconds": 0.015221455,
+            "setup_seconds": 0.007056589,
+            "total_seconds": 0.022517023
+          },
+          "samples": [
+            {
+              "snapshot_seconds": 0.000531836,
+              "ingestion_seconds": 0.003421515,
+              "history_seconds": 0.004849559,
+              "noop_run_seconds": 0.015221455,
+              "setup_seconds": 0.00880291,
+              "total_seconds": 0.024024365
+            },
+            {
+              "snapshot_seconds": 0.000674657,
+              "ingestion_seconds": 0.002475728,
+              "history_seconds": 0.004646119,
+              "noop_run_seconds": 0.014720519,
+              "setup_seconds": 0.007796504,
+              "total_seconds": 0.022517023
+            },
+            {
+              "snapshot_seconds": 0.000571707,
+              "ingestion_seconds": 0.002414794,
+              "history_seconds": 0.004070088,
+              "noop_run_seconds": 0.015169011,
+              "setup_seconds": 0.007056589,
+              "total_seconds": 0.0222256
+            },
+            {
+              "snapshot_seconds": 0.00053925,
+              "ingestion_seconds": 0.002393987,
+              "history_seconds": 0.003583422,
+              "noop_run_seconds": 0.016790447,
+              "setup_seconds": 0.006516659,
+              "total_seconds": 0.023307106
+            },
+            {
+              "snapshot_seconds": 0.000537144,
+              "ingestion_seconds": 0.002338155,
+              "history_seconds": 0.003796864,
+              "noop_run_seconds": 0.015451807,
+              "setup_seconds": 0.006672163,
+              "total_seconds": 0.02212397
+            }
+          ]
+        },
+        "matched": {
+          "backtesting.py": {
+            "medians": {
+              "setup_seconds": 0.001547322,
+              "simulation_seconds": 0.437215737,
+              "total_seconds": 0.438763059
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.001579613,
+                "simulation_seconds": 0.459571158,
+                "total_seconds": 0.461150771
+              },
+              {
+                "setup_seconds": 0.001476918,
+                "simulation_seconds": 0.435668338,
+                "total_seconds": 0.437145256
+              },
+              {
+                "setup_seconds": 0.001712684,
+                "simulation_seconds": 0.453760394,
+                "total_seconds": 0.455473078
+              },
+              {
+                "setup_seconds": 0.001547322,
+                "simulation_seconds": 0.437215737,
+                "total_seconds": 0.438763059
+              },
+              {
+                "setup_seconds": 0.001469865,
+                "simulation_seconds": 0.428638616,
+                "total_seconds": 0.430108481
+              }
+            ]
+          },
+          "backtestingfx": {
+            "medians": {
+              "setup_seconds": 0.007875654,
+              "simulation_seconds": 0.073481037,
+              "total_seconds": 0.080229752
+            },
+            "samples": [
+              {
+                "setup_seconds": 0.008079617,
+                "simulation_seconds": 0.071494413,
+                "total_seconds": 0.07957403
+              },
+              {
+                "setup_seconds": 0.006748715,
+                "simulation_seconds": 0.073481037,
+                "total_seconds": 0.080229752
+              },
+              {
+                "setup_seconds": 0.007875654,
+                "simulation_seconds": 0.075425918,
+                "total_seconds": 0.083301572
+              },
+              {
+                "setup_seconds": 0.008888596,
+                "simulation_seconds": 0.078389315,
+                "total_seconds": 0.087277911
+              },
+              {
+                "setup_seconds": 0.00676604,
+                "simulation_seconds": 0.073361773,
+                "total_seconds": 0.080127813
+              }
+            ]
+          }
+        },
+        "matching_trades": 1749,
+        "final_equity": 8353.820000000283,
+        "equivalence": "passed",
+        "peak_rss_bytes": 150605824
+      }
+    ]
+  },
+  "candidates": {
+    "label": "issue-53-final",
+    "metadata": {
+      "python": "3.14.4 (main, Apr  8 2026, 04:02:31) [GCC 15.2.0]",
+      "platform": "Linux-7.0.2-6-pve-x86_64-with-glibc2.43",
+      "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+      "pyo3_lock_version": "0.28.3",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "git_head": "9fe8523846f5b9c60636c86cd7e81c02c46a41dc",
+      "package_versions": {
+        "backtestingfx": "0.2.0",
+        "pandas": "3.1.0",
+        "numpy": "2.5.4",
+        "backtesting": "0.6.6"
+      }
+    },
+    "repeats": 5,
+    "source_diff": "backtestingfx/backtest.py | 77 ++++++++++++++++++++++++++++++++++-------------\n src/engine.rs             | 68 +++++++++++++++++++++++++++++++++++++++--\n 2 files changed, 121 insertions(+), 24 deletions(-)",
+    "datasets": [
+      {
+        "bars": 50000,
+        "candidates": {
+          "zip-series": {
+            "medians": {
+              "ingestion_seconds": 0.104472168
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.109743318
+              },
+              {
+                "ingestion_seconds": 0.100861117
+              },
+              {
+                "ingestion_seconds": 0.098215828
+              },
+              {
+                "ingestion_seconds": 0.110600661
+              },
+              {
+                "ingestion_seconds": 0.104472168
+              }
+            ]
+          },
+          "itertuples": {
+            "medians": {
+              "ingestion_seconds": 0.093089336
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.098955207
+              },
+              {
+                "ingestion_seconds": 0.091789158
+              },
+              {
+                "ingestion_seconds": 0.091258677
+              },
+              {
+                "ingestion_seconds": 0.093089336
+              },
+              {
+                "ingestion_seconds": 0.107112533
+              }
+            ]
+          },
+          "bulk": {
+            "medians": {
+              "ingestion_seconds": 0.001632455
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.001423597
+              },
+              {
+                "ingestion_seconds": 0.001632455
+              },
+              {
+                "ingestion_seconds": 0.001629162
+              },
+              {
+                "ingestion_seconds": 0.001737553
+              },
+              {
+                "ingestion_seconds": 0.00174899
+              }
+            ]
+          }
+        }
+      },
+      {
+        "bars": 100000,
+        "candidates": {
+          "zip-series": {
+            "medians": {
+              "ingestion_seconds": 0.200610558
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.197435164
+              },
+              {
+                "ingestion_seconds": 0.213490166
+              },
+              {
+                "ingestion_seconds": 0.192768137
+              },
+              {
+                "ingestion_seconds": 0.200610558
+              },
+              {
+                "ingestion_seconds": 0.212305414
+              }
+            ]
+          },
+          "itertuples": {
+            "medians": {
+              "ingestion_seconds": 0.20040424
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.216394454
+              },
+              {
+                "ingestion_seconds": 0.198573793
+              },
+              {
+                "ingestion_seconds": 0.193203236
+              },
+              {
+                "ingestion_seconds": 0.203149879
+              },
+              {
+                "ingestion_seconds": 0.20040424
+              }
+            ]
+          },
+          "bulk": {
+            "medians": {
+              "ingestion_seconds": 0.002933375
+            },
+            "samples": [
+              {
+                "ingestion_seconds": 0.003041068
+              },
+              {
+                "ingestion_seconds": 0.002933375
+              },
+              {
+                "ingestion_seconds": 0.002929475
+              },
+              {
+                "ingestion_seconds": 0.002912611
+              },
+              {
+                "ingestion_seconds": 0.003322649
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

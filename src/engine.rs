@@ -3,8 +3,34 @@ use crate::stats::Stats;
 use crate::strategy::Strategy;
 use crate::types::Bar;
 use crate::validation;
+use pyo3::buffer::{Element, PyBuffer, ReadOnlyCell};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
+
+fn column_slice<'a, T: Element>(
+    py: Python<'a>,
+    buffer: &'a PyBuffer<T>,
+    count: usize,
+) -> PyResult<&'a [ReadOnlyCell<T>]> {
+    // PyO3 0.28.3 accepts a foreign-endian prefix on some platforms.
+    let foreign_endian = match buffer.format().to_bytes().first() {
+        Some(b'>' | b'!') => cfg!(target_endian = "little"),
+        Some(b'<') => cfg!(target_endian = "big"),
+        _ => false,
+    };
+    if foreign_endian {
+        return Err(PyValueError::new_err("bar columns must use native byte order"));
+    }
+    if buffer.dimensions() != 1 || buffer.item_count() != count {
+        return Err(PyValueError::new_err(
+            "bar columns must be one-dimensional and have equal lengths",
+        ));
+    }
+    buffer
+        .as_slice(py)
+        .ok_or_else(|| PyValueError::new_err("bar columns must be C-contiguous"))
+}
 
 #[pyclass]
 pub struct Engine {
@@ -101,6 +127,43 @@ impl Engine {
 
 #[pymethods]
 impl Engine {
+    #[staticmethod]
+    fn _from_columns(
+        py: Python<'_>,
+        columns: (PyBuffer<i64>, [PyBuffer<f64>; 5]),
+        initial_cash: f64,
+        commission: f64,
+        spread: f64,
+        contract_size: f64,
+        quote_to_account: f64,
+    ) -> PyResult<Self> {
+        validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
+        let (timestamps, values) = columns;
+        let count = timestamps.item_count();
+        let timestamps = column_slice(py, &timestamps, count)?;
+        let [open, high, low, close, volume] = &values;
+        let open = column_slice(py, open, count)?;
+        let high = column_slice(py, high, count)?;
+        let low = column_slice(py, low, count)?;
+        let close = column_slice(py, close, count)?;
+        let volume = column_slice(py, volume, count)?;
+        let data = (0..count)
+            .map(|i| {
+                Bar::new(
+                    timestamps[i].get(),
+                    open[i].get(),
+                    high[i].get(),
+                    low[i].get(),
+                    close[i].get(),
+                    volume[i].get(),
+                )
+            })
+            .collect();
+        Ok(Self::new(
+            data, initial_cash, commission, spread, contract_size, quote_to_account,
+        ))
+    }
+
     #[new]
     fn py_new(
         data: Vec<Bar>,
@@ -119,9 +182,8 @@ impl Engine {
         self.equity_curve.clear();
         self.equity_curve.push(self.broker.initial_cash);
 
-        strategy
-            .bind(py)
-            .call_method1("init", (self.data.clone(),))?;
+        let history = PyList::new(py, self.data.iter().cloned())?;
+        strategy.bind(py).call_method1("init", (history,))?;
 
         let broker_py = Py::new(
             py,

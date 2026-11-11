@@ -382,8 +382,11 @@ in `Strategy::init()` or construct a fresh strategy for each run.
 The backtesting engine is written in Rust and compiled as a native Python extension via [PyO3](https://pyo3.rs). This means the event loop, broker simulation, and stats computation run at native speed while your strategy stays in plain Python.
 
 The [matched backtesting.py comparison](examples/benchmark.md) checks trades and
-full equity curves before timing both libraries. Current local results show a
-faster FX run phase but slower total runtime because data conversion dominates.
+full equity curves before timing both libraries. After bulk data ingestion,
+the [setup benchmark](examples/benchmark_ingestion.md) measures about 48–50 times
+less total runtime than the previous implementation, and 5.5–5.7 times less than
+backtesting.py on matched 50,000- and 100,000-bar SMA runs. These local results
+include setup and statistics; speed depends on the data and strategy.
 
 ## Contributing and project direction
 

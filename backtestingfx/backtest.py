@@ -151,7 +151,7 @@ class Backtest:
         self._stats = None
         self._report_df = None
 
-    def _to_bars(self, df):
+    def _bar_columns(self, df):
         required = {"open", "high", "low", "close"}
         columns = {}
         for column in df.columns:
@@ -165,28 +165,63 @@ class Backtest:
         if missing:
             raise ValueError(f"DataFrame missing required columns: {sorted(missing)}")
 
-        bars = []
-        for idx, row in df.iterrows():
-            if isinstance(idx, pd.Timestamp):
-                ts = int(idx.timestamp())
-            else:
-                ts = int(pd.Timestamp(row[columns["timestamp"]]).timestamp())  # type: ignore
+        names = ("open", "high", "low", "close", "volume")
+        numeric = all(isinstance(df[columns[name]].dtype, np.dtype)
+                      and df[columns[name]].dtype.kind in "biuf"
+                      for name in names if name in columns)
+        if not numeric or not isinstance(df.index, pd.DatetimeIndex) or df.index.hasnans:
+            return self._scalar_bar_columns(df, columns)
 
-            bars.append(
-                _rust.Bar(  # type: ignore
-                    timestamp=ts,
-                    open=float(row[columns["open"]]),
-                    high=float(row[columns["high"]]),
-                    low=float(row[columns["low"]]),
-                    close=float(row[columns["close"]]),
-                    volume=float(row[columns["volume"]]) if "volume" in columns else 0.0,
-                )
-            )
-        return bars
+        timestamps = self._timestamps(df.index)
+        values = []
+        for name in names:
+            if name not in columns:
+                values.append(np.zeros(len(df), dtype=np.float64))
+                continue
+            values.append(np.require(df[columns[name]].to_numpy(), dtype=np.float64,
+                                     requirements=["C", "A"]))
+        return timestamps, values
+
+    @staticmethod
+    def _timestamps(index):
+        unit = getattr(index, "unit", "ns")
+        factor = {"s": 1, "ms": 1_000, "us": 1_000_000, "ns": 1_000_000_000}.get(unit)
+        raw = index.asi8
+        if factor is not None and (raw % factor == 0).all():
+            seconds = raw // factor
+            # timestamp() returns a float, which cannot represent every integer
+            # beyond 2**53 seconds. Keep its scalar rounding for those dates.
+            if not len(seconds) or (seconds.min() >= -(2**53) and seconds.max() <= 2**53):
+                return np.ascontiguousarray(seconds, dtype=np.int64)
+        # timestamp() rounds fractional seconds before int() truncates.
+        # Preserve that behavior, including before the Unix epoch.
+        return np.fromiter((int(stamp.timestamp()) for stamp in index),
+                           dtype=np.int64, count=len(index))
+
+    @staticmethod
+    def _scalar_bar_columns(df, columns):
+        timestamps = np.empty(len(df), dtype=np.int64)
+        values = np.empty((5, len(df)), dtype=np.float64)
+        positions = [df.columns.get_loc(columns[name]) if name in columns else None
+                     for name in ("open", "high", "low", "close", "volume")]
+        # The old iterrows() converter used this common row dtype. Preserve its
+        # numeric promotion and scalar errors without constructing a Series per row.
+        for offset, (idx, row) in enumerate(zip(df.index, df.to_numpy())):
+            stamp = idx if isinstance(idx, pd.Timestamp) else pd.Timestamp(
+                row[df.columns.get_loc(columns["timestamp"])])
+            timestamps[offset] = int(stamp.timestamp())
+            for field, position in enumerate(positions):
+                values[field, offset] = float(row[position]) if position is not None else 0.0
+        return timestamps, values
+
+    def _to_bars(self, df):
+        timestamps, values = self._bar_columns(df)
+        return [_rust.Bar(int(ts), float(o), float(h), float(l), float(c), float(v))
+                for ts, o, h, l, c, v in zip(timestamps, *values)]
 
     def _engine(self, df):
-        return _rust.Engine(  # type: ignore
-            self._to_bars(df),
+        return _rust.Engine._from_columns(  # type: ignore
+            self._bar_columns(df),
             self._cash,
             self._commission,
             self._spread,
