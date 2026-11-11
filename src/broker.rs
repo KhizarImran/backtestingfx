@@ -1,5 +1,6 @@
-use crate::types::{Bar, Position, Trade};
+use crate::types::{Bar, Position, SwapCharge, Trade};
 use crate::validation;
+use crate::swap::SwapError;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -15,6 +16,9 @@ pub struct Broker {
     pub spread: f64,
     pub contract_size: f64,
     pub quote_to_account: f64,
+    #[pyo3(get)]
+    pub total_swap: f64,
+    pub swap_charges: Vec<SwapCharge>,
 }
 
 // Rust-internal only, not exposed to Python
@@ -48,16 +52,53 @@ impl Broker {
         // so cash only pays the exit leg here — but the Trade records both, because
         // a trade's PnL should be what the round trip actually cost.
         let commission = self.commission * lots;
+        // Financing is already in cash. Allocate it only to the trade's result.
+        let swap = if lots == position.lot_size {
+            position.swap
+        } else {
+            position.swap * (lots / position.lot_size)
+        };
         self.cash += pnl - commission;
         self.trade_history.push(Trade {
             entry_price: position.entry_price,
             exit_price: close_price,
             lot_size: lots,
             is_long: position.is_long,
-            pnl: pnl - commission * 2.0,
+            pnl: pnl - commission * 2.0 + swap,
             entry_timestamp: position.entry_timestamp,
             exit_timestamp: timestamp,
+            swap,
         });
+    }
+
+    pub(crate) fn apply_swap(&mut self, timestamp: i64, multiplier: f64, long: f64, short: f64) -> Result<(), SwapError> {
+        let mut amounts = Vec::with_capacity(self.positions.len());
+        let mut cash = self.cash;
+        let mut total_swap = self.total_swap;
+        for position in &self.positions {
+            let rate = if position.is_long { long } else { short };
+            let amount = if position.entry_timestamp < timestamp {
+                rate * position.lot_size * multiplier
+            } else { 0.0 };
+            cash += amount;
+            total_swap += amount;
+            if !amount.is_finite() || !(position.swap + amount).is_finite()
+                || !cash.is_finite() || !total_swap.is_finite() {
+                return Err(SwapError::ArithmeticOverflow);
+            }
+            amounts.push(amount);
+        }
+        self.cash = cash;
+        self.total_swap = total_swap;
+        for (position, amount) in self.positions.iter_mut().zip(amounts) {
+            if amount == 0.0 { continue; }
+            position.swap += amount;
+            self.swap_charges.push(SwapCharge {
+                position_id: position.id, timestamp, lot_size: position.lot_size,
+                is_long: position.is_long, multiplier, amount,
+            });
+        }
+        Ok(())
     }
 
     /// Inclusive midpoint triggers: process the open first, filling crossed stops
@@ -133,6 +174,8 @@ impl Broker {
             spread,
             contract_size,
             quote_to_account,
+            total_swap: 0.0,
+            swap_charges: Vec::new(),
         }
     }
 
@@ -160,6 +203,7 @@ impl Broker {
             entry_timestamp: timestamp,
             stop_loss,
             take_profit,
+            swap: 0.0,
         });
     }
 
@@ -183,6 +227,7 @@ impl Broker {
             entry_timestamp: timestamp,
             stop_loss,
             take_profit,
+            swap: 0.0,
         });
     }
 
@@ -211,10 +256,11 @@ impl Broker {
             return;
         }
 
-        // Clone first: settle needs &mut self, so it can't also hold a borrow into
-        // self.positions. A Position is seven numbers, the copy costs nothing.
+        // Keep the original lots and financing for settlement before reducing
+        // the survivor. Settlement also needs a separate borrow of self.
         let position = self.positions[index].clone();
         self.positions[index].lot_size -= lot_size;
+        self.positions[index].swap -= position.swap * (lot_size / position.lot_size);
         self.settle(&position, lot_size, price, timestamp);
     }
 

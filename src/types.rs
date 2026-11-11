@@ -51,6 +51,9 @@ pub struct Position {
     pub stop_loss: Option<f64>,
     #[pyo3(get)]
     pub take_profit: Option<f64>,
+    /// Signed financing accrued on the remaining lots, already posted to cash.
+    #[pyo3(get)]
+    pub swap: f64,
 }
 
 #[pymethods]
@@ -84,4 +87,25 @@ pub struct Trade {
     pub entry_timestamp: i64,
     #[pyo3(get)]
     pub exit_timestamp: i64,
+    /// Signed financing allocated to this close, included in net PnL.
+    #[pyo3(get)]
+    pub swap: f64,
+}
+
+/// One signed account-currency financing posting for a position at rollover.
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct SwapCharge {
+    #[pyo3(get)]
+    pub position_id: u64,
+    #[pyo3(get)]
+    pub timestamp: i64,
+    #[pyo3(get)]
+    pub lot_size: f64,
+    #[pyo3(get)]
+    pub is_long: bool,
+    #[pyo3(get)]
+    pub multiplier: f64,
+    #[pyo3(get)]
+    pub amount: f64,
 }
