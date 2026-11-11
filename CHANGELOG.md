@@ -14,6 +14,11 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Pandas input uses bulk typed buffers to construct native bars, removing
+  per-row Series and temporary Python Bar allocation from numeric DatetimeIndex
+  ingestion. Initialization history avoids an intermediate native copy. Preserve
+  scalar timestamp behavior, independent runs, report snapshots, and Bar identity.
+  See the ingestion benchmark for measured setup and total-runtime improvements.
 - Python strategy dispatch reuses the Python method-name string for `next`,
   while preserving per-bar method lookup, distinct Bar objects, and exceptions.
 - The existing cross-library comparison and benchmark now use matched fixed-unit

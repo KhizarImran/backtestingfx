@@ -1,5 +1,8 @@
 # Python callback benchmark
 
+The recorded timings below precede the issue #53 ingestion improvement. See the
+[ingestion benchmark](benchmark_ingestion.md) for current setup and total times.
+
 This benchmark measures the Rust-to-Python callback path separately from data
 conversion. It also compares indicator work, trading, and position inspection.
 It uses the real Python `_Adapter` and the normal Rust broker, equity, statistics,
