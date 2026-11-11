@@ -61,5 +61,11 @@ conversion assumptions. Read [CHANGELOG.md](CHANGELOG.md) before upgrading:
 unchanged strategy code can produce different results after a modeling fix.
 The full bid–ask spread correction in Unreleased is one such example.
 
+With optional swaps enabled, also record signed long/short rates, the rollover
+timezone and time, weekday weights, and date overrides. Timezone rules come
+from the `chrono-tz` database embedded in the build. Pin the package and native
+dependency versions when reproducing historical rollover results. See
+[SWAPS.md](SWAPS.md) for calendar behavior.
+
 This policy describes project expectations; the current tests and published
 artifacts establish the coverage actually verified for each release.
