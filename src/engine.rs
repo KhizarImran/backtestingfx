@@ -4,35 +4,11 @@ use crate::strategy::Strategy;
 use crate::swap::{SwapConfig, SwapError, SwapPlan};
 use crate::types::Bar;
 use crate::validation;
-use pyo3::buffer::{Element, PyBuffer, ReadOnlyCell};
+use crate::data::{self, BarColumns, DataError};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::convert::Infallible;
-
-fn column_slice<'a, T: Element>(
-    py: Python<'a>,
-    buffer: &'a PyBuffer<T>,
-    count: usize,
-) -> PyResult<&'a [ReadOnlyCell<T>]> {
-    // PyO3 0.28.3 accepts a foreign-endian prefix on some platforms.
-    let foreign_endian = match buffer.format().to_bytes().first() {
-        Some(b'>' | b'!') => cfg!(target_endian = "little"),
-        Some(b'<') => cfg!(target_endian = "big"),
-        _ => false,
-    };
-    if foreign_endian {
-        return Err(PyValueError::new_err("bar columns must use native byte order"));
-    }
-    if buffer.dimensions() != 1 || buffer.item_count() != count {
-        return Err(PyValueError::new_err(
-            "bar columns must be one-dimensional and have equal lengths",
-        ));
-    }
-    buffer
-        .as_slice(py)
-        .ok_or_else(|| PyValueError::new_err("bar columns must be C-contiguous"))
-}
 
 #[pyclass]
 pub struct Engine {
@@ -138,6 +114,13 @@ impl Strategy for Noop {
 }
 
 impl Engine {
+    /// Construct an engine from checked market data; native configuration stays caller-owned.
+    pub fn try_new(data: Vec<Bar>, initial_cash: f64, commission: f64, spread: f64,
+        contract_size: f64, quote_to_account: f64) -> Result<Self, DataError> {
+        data::validate_bars(&data)?;
+        Ok(Self::new(data, initial_cash, commission, spread, contract_size, quote_to_account))
+    }
+
     pub fn new(
         data: Vec<Bar>,
         initial_cash: f64,
@@ -168,7 +151,7 @@ impl Engine {
     #[pyo3(signature = (columns, initial_cash, commission, spread, contract_size, quote_to_account, *, swap=None))]
     fn _from_columns(
         py: Python<'_>,
-        columns: (PyBuffer<i64>, [PyBuffer<f64>; 5]),
+        columns: BarColumns,
         initial_cash: f64,
         commission: f64,
         spread: f64,
@@ -177,27 +160,7 @@ impl Engine {
         swap: Option<SwapConfig>,
     ) -> PyResult<Self> {
         validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
-        let (timestamps, values) = columns;
-        let count = timestamps.item_count();
-        let timestamps = column_slice(py, &timestamps, count)?;
-        let [open, high, low, close, volume] = &values;
-        let open = column_slice(py, open, count)?;
-        let high = column_slice(py, high, count)?;
-        let low = column_slice(py, low, count)?;
-        let close = column_slice(py, close, count)?;
-        let volume = column_slice(py, volume, count)?;
-        let data = (0..count)
-            .map(|i| {
-                Bar::new(
-                    timestamps[i].get(),
-                    open[i].get(),
-                    high[i].get(),
-                    low[i].get(),
-                    close[i].get(),
-                    volume[i].get(),
-                )
-            })
-            .collect();
+        let data = data::bars_from_columns(py, columns)?;
         let mut engine = Self::new(
             data, initial_cash, commission, spread, contract_size, quote_to_account,
         );
@@ -217,6 +180,7 @@ impl Engine {
         swap: Option<SwapConfig>,
     ) -> PyResult<Self> {
         validation::config(initial_cash, commission, spread, contract_size, quote_to_account)?;
+        data::validate_bars(&data)?;
         let mut engine = Self::new(data, initial_cash, commission, spread, contract_size, quote_to_account);
         engine.swap = swap;
         Ok(engine)

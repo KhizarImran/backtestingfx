@@ -142,6 +142,8 @@ class Backtest:
         *,
         swap=None,
     ):
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError("market data must be a pandas DataFrame")
         _rust._validate_config(cash, commission, spread, contract_size, quote_to_account)
         self._df = df
         self._strategy_class = strategy_class
@@ -169,6 +171,13 @@ class Backtest:
         missing = required - columns.keys()
         if missing:
             raise ValueError(f"DataFrame missing required columns: {sorted(missing)}")
+
+        if isinstance(df.index, pd.DatetimeIndex) and df.index.hasnans:
+            offset = int(np.flatnonzero(df.index.isna())[0])
+            raise ValueError(f"bar {offset}: timestamp is missing (NaT)")
+        if len(df) and not isinstance(df.index, pd.DatetimeIndex) and "timestamp" not in columns:
+            if not all(isinstance(index, pd.Timestamp) for index in df.index):
+                raise ValueError("DataFrame needs a DatetimeIndex or timestamp column")
 
         names = ("open", "high", "low", "close", "volume")
         numeric = all(isinstance(df[columns[name]].dtype, np.dtype)
@@ -200,29 +209,49 @@ class Backtest:
                 return np.ascontiguousarray(seconds, dtype=np.int64)
         # timestamp() rounds fractional seconds before int() truncates.
         # Preserve that behavior, including before the Unix epoch.
-        return np.fromiter((int(stamp.timestamp()) for stamp in index),
+        return np.fromiter((Backtest._timestamp_value(stamp, offset) for offset, stamp in enumerate(index)),
                            dtype=np.int64, count=len(index))
+
+    @staticmethod
+    def _timestamp_value(value, offset):
+        try:
+            stamp = value if isinstance(value, pd.Timestamp) else pd.Timestamp(value)
+            if pd.isna(stamp):
+                raise ValueError("missing timestamp")
+            seconds = int(stamp.timestamp())
+            if not -(2**63) <= seconds < 2**63:
+                raise ValueError("timestamp outside int64 seconds")
+            return seconds
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"bar {offset}: timestamp must be a valid datetime convertible to int64 Unix seconds") from error
+
+    @staticmethod
+    def _float_value(value, field, offset):
+        try:
+            if np.iscomplexobj(value):
+                raise ValueError("complex value")
+            return float(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"bar {offset}: {field} must be a real number, got {value!r}") from error
 
     @staticmethod
     def _scalar_bar_columns(df, columns):
         timestamps = np.empty(len(df), dtype=np.int64)
         values = np.empty((5, len(df)), dtype=np.float64)
-        positions = [df.columns.get_loc(columns[name]) if name in columns else None
-                     for name in ("open", "high", "low", "close", "volume")]
+        names = ("open", "high", "low", "close", "volume")
+        positions = [df.columns.get_loc(columns[name]) if name in columns else None for name in names]
+        timestamp_position = df.columns.get_loc(columns["timestamp"]) if "timestamp" in columns else None
         # The old iterrows() converter used this common row dtype. Preserve its
         # numeric promotion and scalar errors without constructing a Series per row.
         for offset, (idx, row) in enumerate(zip(df.index, df.to_numpy())):
-            stamp = idx if isinstance(idx, pd.Timestamp) else pd.Timestamp(
-                row[df.columns.get_loc(columns["timestamp"])])
-            timestamps[offset] = int(stamp.timestamp())
+            stamp = idx if isinstance(idx, pd.Timestamp) else row[timestamp_position]
+            timestamps[offset] = Backtest._timestamp_value(stamp, offset)
             for field, position in enumerate(positions):
-                values[field, offset] = float(row[position]) if position is not None else 0.0
+                values[field, offset] = Backtest._float_value(row[position], names[field], offset) if position is not None else 0.0
         return timestamps, values
 
     def _to_bars(self, df):
-        timestamps, values = self._bar_columns(df)
-        return [_rust.Bar(int(ts), float(o), float(h), float(l), float(c), float(v))
-                for ts, o, h, l, c, v in zip(timestamps, *values)]
+        return _rust._bars_from_columns(self._bar_columns(df))
 
     def _engine(self, df):
         return _rust.Engine._from_columns(  # type: ignore
@@ -262,6 +291,8 @@ class Backtest:
         if not grid:
             raise ValueError("optimize needs at least one parameter range")
 
+        engine = self._engine(self._df)
+
         names = list(grid)
         combos = [dict(zip(names, values)) for values in itertools.product(*grid.values())]
 
@@ -287,7 +318,6 @@ class Backtest:
             # PyReadonlyArray1 if this ever shows up in a profile.
             signals.append(signal.tolist())
 
-        engine = self._engine(self._df)
         results = _rust.run_grid(engine, signals)  # type: ignore
 
         return sorted(
