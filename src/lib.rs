@@ -23,5 +23,6 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::SwapCharge>()?;
     m.add_function(wrap_pyfunction!(optimise::run_grid, m)?)?;
     m.add_function(wrap_pyfunction!(validation::config, m)?)?;
+    m.add_function(wrap_pyfunction!(data::bars_from_columns, m)?)?;
     Ok(())
 }

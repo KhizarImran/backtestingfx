@@ -15,7 +15,8 @@ priorities or delivered capabilities change.
 
 - Implemented (unreleased): gap-aware stop/target fills
   ([#8](https://github.com/KhizarImran/backtestingfx/issues/8)); see README execution policy.
-- Data and timestamp validation: [#15](https://github.com/KhizarImran/backtestingfx/issues/15).
+- Implemented (unreleased): OHLCV and timestamp-order validation
+  ([#15](https://github.com/KhizarImran/backtestingfx/issues/15)); see [market-data rules](MARKET_DATA.md).
 - Implemented (unreleased): Python broker, size, and signal validation
   ([#16](https://github.com/KhizarImran/backtestingfx/issues/16)).
 - Independent native engine runs: [#18](https://github.com/KhizarImran/backtestingfx/issues/18).
