@@ -6,11 +6,17 @@ A Rust-powered FX backtesting library for Python. Write your strategy in Python,
 
 Inspired by [backtesting.py](https://kernc.github.io/backtesting.py/) but built specifically for forex — lot sizes, pip-based PnL, stop loss, take profit, and realistic account currency conversion.
 
+This README describes `main`, including changes listed as
+[Unreleased](CHANGELOG.md). See [Installation](#installation) to build the
+current checkout; an installed release can have fewer features.
+
 ```
 pip install backtestingfx
 ```
 
 ## Quick Start
+
+From the repository root, use the bundled EURUSD sample:
 
 ```python
 import pandas as pd
@@ -21,7 +27,7 @@ class MyCrossStrategy(Strategy):
         self.close_all()
         self.buy(lot_size=0.1)
 
-df = pd.read_csv("EURUSD_1H.csv")
+df = pd.read_csv("data/EURUSD_1H.csv")
 
 bt = Backtest(df, MyCrossStrategy, cash=10000.0, spread=0.0001)
 stats = bt.run()
@@ -32,15 +38,17 @@ print(stats)
 ```
 --- Backtest Results ---
 Initial Cash:   10000.00
-Final Cash:     9823.50
-Total Return:   -1.77%
-Trades:         248
-Win Rate:       52.4%
-Avg PnL:        -0.71380
-Best Trade:     84.20000
-Worst Trade:    -61.30000
-Profit Factor:  0.94
-Max Drawdown:   3.21%
+Final Cash:     7669.90
+Total Return:   -23.30%
+Trades:         2000
+Win Rate:       39.8%
+Avg PnL:        -1.16505
+Best Trade:     33.10000
+Worst Trade:    -50.50000
+Profit Factor:  0.62
+Max Drawdown:   23.38%
+Swap Cash Flow: 0.00
+Sharpe Ratio:   -0.1652 (unannualized)
 ```
 
 ### Interactive HTML report
@@ -58,7 +66,8 @@ bt.plot("strategy-report.html")
 ```
 
 The report includes candlesticks, trade entries and exits, equity, drawdown,
-trade diagnostics, and a complete trade ledger. Plotly is embedded in the file,
+trade diagnostics, and a complete trade ledger. With swaps enabled, it also
+shows financing totals, calendar assumptions, and dated postings. Plotly is embedded in the file,
 so the report works offline without a server.
 
 ## Installation
@@ -68,6 +77,18 @@ pip install backtestingfx
 ```
 
 Requires Python 3.9+.
+
+To use the current source, clone this repository and install from its root:
+
+```bash
+git clone https://github.com/KhizarImran/backtestingfx.git
+cd backtestingfx
+python -m pip install .
+```
+
+A source build requires Rust and a native compiler. Use `".[report]"` instead
+of `.` to include HTML reporting. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+development setup.
 
 ## Writing a Strategy
 
@@ -188,8 +209,11 @@ field. Re-sort it yourself to minimise something instead.
 `next()` runs in Python, so every bar needs the GIL and threads can't help. A signal
 function is called **once per parameter combination**, not once per bar — it returns the
 target lot size for each bar (positive long, negative short, `0.0` flat), and Rust runs
-every simulation natively with the GIL released. On a 315-combination grid that is
-**157x faster** than looping `Backtest.run()` over the same grid.
+every simulation natively with the GIL released. Earlier documentation reported
+a 157x speedup on a 315-combination grid. That historical measurement predates
+the ingestion improvements and is not a current performance guarantee.
+Optimization timing, memory, and grid-size measurements remain tracked in
+[#39](https://github.com/KhizarImran/backtestingfx/issues/39).
 
 The trade-off: a signal function can't see the broker, so path-dependent logic (trailing
 stops, pyramiding, "exit after N bars") still needs `next()` and a plain loop. Indicator
@@ -215,7 +239,7 @@ Backtest(
     df,                       # pandas DataFrame with OHLCV columns
     StrategyClass,
     cash=10000.0,             # starting account balance in USD
-    commission=0.0,           # commission per lot (e.g. 7.0 = $7/lot)
+    commission=0.0,           # account-currency commission per lot per side
     spread=0.0,               # full bid–ask width in price units (0.0001 = 1 EURUSD pip)
     contract_size=100000.0,   # standard FX lot size, don't change this
     quote_to_account=1.0,     # conversion rate from quote currency to USD
@@ -335,9 +359,11 @@ Rerun affected backtests; there is no setting to restore the old gap behavior.
 
 ### Trading non-USD pairs
 
-By default `quote_to_account=1.0` which is correct for USD-quoted pairs (EURUSD, GBPUSD).
+`quote_to_account` converts the pair's quote currency into the account currency.
+The rate is constant over a run. For a USD account, `1.0` applies to USD-quoted
+pairs such as EURUSD and GBPUSD.
 
-For other pairs, pass the rate that converts the quote currency to USD:
+For other pairs with a USD account, example inputs are:
 
 | Pair | quote_to_account |
 |------|-----------------|
@@ -357,17 +383,24 @@ bt = Backtest(df, MyStrategy, cash=10000.0, spread=0.00015, quote_to_account=1.2
 | `initial_cash` | Starting balance |
 | `final_cash` | Ending balance |
 | `total_return_pct` | Total return as a percentage |
-| `num_trades` | Number of completed trades |
+| `num_trades` | Number of completed exit records; each partial close counts separately |
 | `num_wins` | Number of winning trades |
 | `win_rate_pct` | Win rate as a percentage |
-| `avg_pnl` | Average PnL per trade in USD |
-| `best_trade` | Best single trade PnL in USD |
-| `worst_trade` | Worst single trade PnL in USD |
+| `avg_pnl` | Average net PnL per exit record in account currency |
+| `best_trade` | Best single exit's net PnL in account currency |
+| `worst_trade` | Worst single exit's net PnL in account currency |
 | `profit_factor` | Gross profit / gross loss |
 | `max_drawdown_pct` | Maximum drawdown as a percentage |
 | `sharpe_ratio` | Unannualized Sharpe ratio |
 | `equity_curve` | Account equity from initial cash through final liquidation |
-| `trades` | Completed trades with entry, exit, size, direction, and net PnL |
+| `trades` | Completed exit records with entry, exit, size, direction, allocated swap, and net PnL |
+| `total_swap` | Signed financing posted to cash; zero when swaps are disabled |
+| `swap_charges` | Dated financing records with position ID, lots, direction, multiplier, and signed amount |
+
+Net trade PnL includes spread through fill prices, both commission legs, and
+allocated `trade.swap`. Negative swap values are charges; positive values are
+credits. A position snapshot's `swap` contains financing accrued on its remaining
+lots. See [SWAPS.md](SWAPS.md) for allocation and cash reconciliation.
 
 ## Data Format
 
@@ -377,7 +410,12 @@ Pass a pandas DataFrame with these columns:
 open, high, low, close, volume
 ```
 
-The index should be a `DatetimeIndex`, or include a `timestamp` column. Volume is optional (defaults to 0).
+Use a `DatetimeIndex` or include a `timestamp` column. OHLCV and timestamp column
+names are case-insensitive. Volume is optional and defaults to zero. Market data
+requires positive finite OHLC, consistent candle ranges, nonnegative finite
+volume, and strictly increasing whole-second timestamps. Enabled swaps add
+rollover-calendar range checks. Explicit timestamp-unit policy remains in
+[#17](https://github.com/KhizarImran/backtestingfx/issues/17).
 
 Data is checked before strategy or signal callbacks. See
 [MARKET_DATA.md](MARKET_DATA.md) for ordering, invalid-input errors, empty-input
@@ -387,9 +425,13 @@ behavior, and the native CSV loader's fallible API.
 
 Native Rust `Engine::run()` and Python `Engine.run_native_sma()` start each run
 with fresh broker state using the current initial cash and cost configuration.
-Cash, positions, completed trades, position IDs, and equity history do not carry
+Cash, positions, completed trades, position IDs, financing, and equity history do not carry
 between runs. For native strategies with mutable internal state, reset that state
 in `Strategy::init()` or construct a fresh strategy for each run.
+
+Native `Engine::run_with_swap()` enables optional financing and returns a
+`Result`. Python `Engine(..., swap=config)` applies its configuration to Python
+callbacks and `run_native_sma()`. See [native swap execution](SWAPS.md#native-execution-and-optimization).
 
 ## Why Rust?
 
@@ -397,9 +439,9 @@ The backtesting engine is written in Rust and compiled as a native Python extens
 
 The [matched backtesting.py comparison](examples/benchmark.md) checks trades and
 full equity curves before timing both libraries. After bulk data ingestion,
-the [setup benchmark](examples/benchmark_ingestion.md) measures about 48–50 times
-less total runtime than the previous implementation, and 5.5–5.7 times less than
-backtesting.py on matched 50,000- and 100,000-bar SMA runs. These local results
+the [setup benchmark](examples/benchmark_ingestion.md) measures total execution
+about 48–50 times faster than the previous implementation, and 5.5–5.7 times
+faster than backtesting.py on matched 50,000- and 100,000-bar SMA runs. These local results
 include setup and statistics; speed depends on the data and strategy.
 
 ## Contributing and project direction

@@ -1,7 +1,7 @@
 # Contributing
 
 backtestingfx focuses on FX research with OHLCV bars, lot sizing, spread,
-commission, and quote-to-account conversion. See the [roadmap](ROADMAP.md)
+commission, optional overnight financing, and quote-to-account conversion. See the [roadmap](ROADMAP.md)
 for priorities and the [compatibility policy](COMPATIBILITY.md) before changing
 public behavior. Search existing issues before opening a bug or feature request.
 
@@ -63,6 +63,7 @@ Run these from the repository root after building/installing the package:
 ```bash
 python examples/sma_cross.py
 python examples/optimize.py
+python examples/swaps.py
 python examples/html_report.py
 cargo run --example simple_strategy
 ```
@@ -75,6 +76,11 @@ The HTML example generates synthetic data, writes
 assumptions when sharing results. See [the matched comparison](examples/benchmark.md)
 for correctness checks and separate setup/run timings. Reference-comparison tests
 skip when the optional dependency is absent.
+
+The swap example uses a small flat-price fixture and checks financing and
+partial-close reconciliation. See [SWAPS.md](SWAPS.md) for rate units, rollover
+calendars, and native execution. For profiling and total-runtime comparisons,
+see [the ingestion benchmark](examples/benchmark_ingestion.md).
 
 ## Pull requests
 
