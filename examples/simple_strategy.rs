@@ -13,11 +13,12 @@ impl Strategy for BuyEveryBar {
     }
 }
 
-fn main() {
-    let data = load_csv("data/EURUSD_1H.csv");
+fn main() -> Result<(), _backtestingfx::data::DataError> {
+    let data = load_csv("data/EURUSD_1H.csv")?;
     let mut engine = Engine::new(data, 10_000.0, 0.0, 0.00010, 1.0, 1.0);
     let mut strategy = BuyEveryBar;
 
     let stats = engine.run(&mut strategy);
     println!("{}", stats);
+    Ok(())
 }

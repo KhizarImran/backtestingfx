@@ -18,9 +18,7 @@ pub struct Bar {
     pub volume: f64,
 }
 
-#[pymethods]
 impl Bar {
-    #[new]
     pub fn new(timestamp: i64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> Self {
         Bar {
             timestamp,
@@ -30,6 +28,21 @@ impl Bar {
             close,
             volume,
         }
+    }
+
+    pub fn try_new(timestamp: i64, open: f64, high: f64, low: f64, close: f64, volume: f64)
+        -> Result<Self, crate::data::DataError> {
+        let bar = Self::new(timestamp, open, high, low, close, volume);
+        crate::data::validate_bar(&bar, 0)?;
+        Ok(bar)
+    }
+}
+
+#[pymethods]
+impl Bar {
+    #[new]
+    fn py_new(timestamp: i64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> PyResult<Self> {
+        Ok(Self::try_new(timestamp, open, high, low, close, volume)?)
     }
 }
 

@@ -17,6 +17,8 @@ priorities or delivered capabilities change.
 - Documented stop-first intrabar policy: [#11](https://github.com/KhizarImran/backtestingfx/issues/11).
 - Optional swaps, rollover calendars, financing ledgers, and partial-close accounting:
   [#13](https://github.com/KhizarImran/backtestingfx/issues/13), [swap guide](SWAPS.md).
+- OHLCV and strictly increasing timestamp validation: [#15](https://github.com/KhizarImran/backtestingfx/issues/15),
+  [market-data rules](MARKET_DATA.md).
 - Python broker, size, and signal validation: [#16](https://github.com/KhizarImran/backtestingfx/issues/16).
 - Independent native engine runs: [#18](https://github.com/KhizarImran/backtestingfx/issues/18).
 - Asserted cross-library comparisons: [#38](https://github.com/KhizarImran/backtestingfx/issues/38).
@@ -25,11 +27,7 @@ priorities or delivered capabilities change.
   [#48](https://github.com/KhizarImran/backtestingfx/issues/48).
 - Bulk ingestion and measured setup improvements: [#53](https://github.com/KhizarImran/backtestingfx/issues/53).
 
-## 1. Correctness foundation (P0)
-
-- Data and timestamp validation: [#15](https://github.com/KhizarImran/backtestingfx/issues/15).
-
-## 2. Core adoption (P1)
+## 1. Core adoption (P1)
 
 - Configurable market execution timing and final liquidation: [#10](https://github.com/KhizarImran/backtestingfx/issues/10).
 - Numeric timestamp units and timezone policy: [#17](https://github.com/KhizarImran/backtestingfx/issues/17).
@@ -39,7 +37,7 @@ priorities or delivered capabilities change.
 - Result exports and accounting tests: [#32](https://github.com/KhizarImran/backtestingfx/issues/32), [#37](https://github.com/KhizarImran/backtestingfx/issues/37).
 - Wheel coverage, platform CI, and API documentation: [#35](https://github.com/KhizarImran/backtestingfx/issues/35), [#36](https://github.com/KhizarImran/backtestingfx/issues/36), [#40](https://github.com/KhizarImran/backtestingfx/issues/40).
 
-## 3. Research usability and maturity (P2)
+## 2. Research usability and maturity (P2)
 
 - Optimization constraints and objectives: [#28](https://github.com/KhizarImran/backtestingfx/issues/28).
 - Out-of-sample workflows and broader metrics: [#31](https://github.com/KhizarImran/backtestingfx/issues/31), [#33](https://github.com/KhizarImran/backtestingfx/issues/33).

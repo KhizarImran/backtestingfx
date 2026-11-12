@@ -2,7 +2,8 @@
 
 Pass a `SwapConfig` to charge or credit positions held across rollover.
 `swap=None` is the default and disables financing, calendar preparation, and
-the additional timestamp checks. Existing fills and accounting stay the same.
+the additional rollover-calendar checks. Base [market-data validation](MARKET_DATA.md)
+still applies. Existing fills and accounting stay the same.
 
 ```python
 from backtestingfx import Backtest, SwapConfig
@@ -61,8 +62,9 @@ close times or an intrabar path. At each observed bar it:
 
 Only positions entered **strictly before** a cutoff pay it. An entry exactly at
 rollover waits until a later cutoff. An existing position closed at the cutoff,
-including by a gap stop, pays before closing. Repeated bar timestamps cannot
-post an event twice. No charges precede the first observation.
+including by a gap stop, pays before closing. Each event is posted at most once.
+Checked input requires unique, strictly increasing whole-second timestamps.
+No charges precede the first observation.
 
 Missing bars do not skip calendar events. Positions are treated as held until
 the next observed bar, and the ledger retains each actual rollover timestamp.
@@ -76,8 +78,9 @@ cutoff that does not exist during a DST gap raises `ValueError` before strategy
 initialization. Choose another time or override that date with multiplier zero.
 Missing cutoffs outside the observed interval do not cause an error.
 
-Enabled swaps require nondecreasing timestamps within Chrono's supported date
-range, including the timezone offset. Equal timestamps are allowed. Invalid
+Enabled swaps additionally require timestamps within Chrono's supported date
+range, including the timezone offset. Duplicate timestamps are rejected by
+market-data validation even when swaps are disabled. Invalid
 configuration, unsupported dates, and backwards timestamps raise errors.
 An overflowing posting raises an error before changing any position, cash
 balance, or financing ledger for that rollover.

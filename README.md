@@ -280,8 +280,11 @@ windows satisfying `1 <= fast <= slow`.
 
 These checks apply at Python entry points, including direct extension calls.
 Native Rust callers remain responsible for supplying valid inputs to the
-simulation methods. OHLC data and timestamp validation are tracked separately
-in [#15](https://github.com/KhizarImran/backtestingfx/issues/15).
+simulation methods. [Market-data validation](MARKET_DATA.md) requires positive
+finite OHLC values, consistent candle ranges, nonnegative finite volume, and
+strictly increasing whole-second timestamps before simulation. Empty data is
+valid. Explicit timestamp-unit policy remains tracked in
+[#17](https://github.com/KhizarImran/backtestingfx/issues/17).
 
 **Migration:** replace invalid inputs that previously passed through, including
 zero initial cash, nonpositive opening sizes, and infinite signals. Calls now
@@ -408,11 +411,15 @@ open, high, low, close, volume
 ```
 
 Use a `DatetimeIndex` or include a `timestamp` column. OHLCV and timestamp column
-names are case-insensitive. Volume is optional and defaults to zero. Swaps add
-nondecreasing-timestamp and calendar-range checks when enabled. Broader data
-validation and timestamp-unit policies remain in
-[#15](https://github.com/KhizarImran/backtestingfx/issues/15) and
+names are case-insensitive. Volume is optional and defaults to zero. Market data
+requires positive finite OHLC, consistent candle ranges, nonnegative finite
+volume, and strictly increasing whole-second timestamps. Enabled swaps add
+rollover-calendar range checks. Explicit timestamp-unit policy remains in
 [#17](https://github.com/KhizarImran/backtestingfx/issues/17).
+
+Data is checked before strategy or signal callbacks. See
+[MARKET_DATA.md](MARKET_DATA.md) for ordering, invalid-input errors, empty-input
+behavior, and the native CSV loader's fallible API.
 
 ### Reusing a native engine
 

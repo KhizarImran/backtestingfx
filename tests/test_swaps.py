@@ -118,7 +118,7 @@ class SwapTest(unittest.TestCase):
         self.assertEqual([row.is_long for row in stats.swap_charges], [True, False])
         self.assert_reconciles(stats)
 
-    def test_exact_boundary_closes_reentries_and_duplicate_bars(self):
+    def test_exact_boundary_closes_and_reentries_charge_only_once(self):
         class Reenter(Strategy):
             def next(self):
                 if self.index in (1, 2):
@@ -126,7 +126,7 @@ class SwapTest(unittest.TestCase):
                 self.buy(1.0)
 
         data = market("2026-01-05 23:59:59", "2026-01-06 00:00",
-                      "2026-01-06 00:00", "2026-01-06 00:00:01")
+                      "2026-01-06 00:00:01", "2026-01-06 00:00:02")
         stats = Backtest(data, Reenter, swap=SwapConfig(long=-10.0)).run()
         self.assertEqual(stats.total_swap, -10.0)
         self.assertEqual(len(stats.swap_charges), 1)
@@ -245,12 +245,14 @@ class SwapTest(unittest.TestCase):
             def init(self):
                 called.append(True)
 
-        with self.assertRaisesRegex(ValueError, "nondecreasing"):
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
             Backtest(market("2026-01-06", "2026-01-05"), InitProbe,
                      swap=SwapConfig(long=-1)).run()
         self.assertEqual(called, [])
-        # Swaps do not introduce timestamp restrictions when disabled.
-        Backtest(market("2026-01-06", "2026-01-05"), InitProbe).run()
+        # Checked market data is ordered even when swaps are disabled.
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            Backtest(market("2026-01-06", "2026-01-05"), InitProbe).run()
+        self.assertEqual(called, [])
         with self.assertRaisesRegex(ValueError, "date range"):
             Engine([Bar(8210266876799, 1, 1, 1, 1, 0)], *CONFIG,
                    swap=SwapConfig(timezone="Pacific/Kiritimati")).run_native_sma(1, 1, 0.1)

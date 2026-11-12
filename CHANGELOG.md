@@ -20,6 +20,13 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Market-data boundaries reject nonfinite/nonpositive OHLC values, inconsistent
+  candle ranges, negative/nonfinite volume, and duplicate or backwards timestamps
+  after conversion to whole seconds. Python errors identify the bar and field;
+  empty inputs remain valid. Optimization checks data before calling signals.
+- Native CSV loading resolves columns by case-insensitive name, defaults missing
+  volume to zero, and returns typed errors instead of panicking. Checked native
+  `Bar::try_new`, `Engine::try_new`, and `data::validate_bars` are also available.
 - Pandas input uses bulk typed buffers to construct native bars, removing
   per-row Series and temporary Python Bar allocation from numeric DatetimeIndex
   ingestion. Initialization history avoids an intermediate native copy. Preserve
@@ -51,6 +58,11 @@
   the exit-side spread (future exit commission is still charged only at closing).
 
 ### Migration
+- Malformed candles and duplicate/reversed whole-second timestamps now raise
+  errors, including repeated timestamps previously accepted with swaps enabled.
+  Resolve subsecond collisions explicitly before simulation. Native `load_csv`
+  now returns `Result<Vec<Bar>, DataError>`; handle it with `?` or an explicit
+  match. See [MARKET_DATA.md](MARKET_DATA.md) for the complete input policy.
 - Python cash, contract size, conversion rate, opening sizes, prices, and supplied
   SL/TP levels must be positive and finite; spread and commission must be finite
   and nonnegative. Invalid numeric inputs now raise `ValueError`. Signal arrays
