@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Explicit Python `timestamp_unit` and native CSV `TimestampUnit` options for
+  numeric epoch input. Naive datetimes mean UTC; offsets normalize to UTC.
 - Optional `SwapConfig` for signed long/short overnight financing in account
   currency per lot. Configure local rollover time, IANA timezone, weekday weights,
   and holiday date overrides. Swaps are disabled by default.
@@ -20,6 +22,9 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Timestamp conversion floors to exact whole seconds, including before 1970,
+  without floating-point rounding or row promotion of integer timestamps.
+  Reports use the same saved seconds as the engine and financing ledger.
 - Market-data boundaries reject nonfinite/nonpositive OHLC values, inconsistent
   candle ranges, negative/nonfinite volume, and duplicate or backwards timestamps
   after conversion to whole seconds. Python errors identify the bar and field;
@@ -30,7 +35,8 @@
 - Pandas input uses bulk typed buffers to construct native bars, removing
   per-row Series and temporary Python Bar allocation from numeric DatetimeIndex
   ingestion. Initialization history avoids an intermediate native copy. Preserve
-  scalar timestamp behavior, independent runs, report snapshots, and Bar identity.
+  independent runs, report snapshots, and Bar identity. Timestamp policy is
+  explicit as described above.
   See the ingestion benchmark for measured setup and total-runtime improvements.
 - Python strategy dispatch reuses the Python method-name string for `next`,
   while preserving per-bar method lookup, distinct Bar objects, and exceptions.
@@ -58,6 +64,11 @@
   the exit-side spread (future exit commission is still charged only at closing).
 
 ### Migration
+- Numeric timestamp columns now require `timestamp_unit="s"`, `"ms"`, `"us"`, or
+  `"ns"`. Use `"ns"` for the previous implicit pandas units. Fractional dates
+  floor instead of rounding and truncating; rerun affected backtests and resolve
+  collisions at whole-second precision. Native numeric CSV uses signed integers
+  with `load_csv_with_timestamp_unit`. See [timestamp rules](MARKET_DATA.md#timestamp-sources-and-ordering).
 - Malformed candles and duplicate/reversed whole-second timestamps now raise
   errors, including repeated timestamps previously accepted with swaps enabled.
   Resolve subsecond collisions explicitly before simulation. Native `load_csv`

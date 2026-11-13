@@ -20,6 +20,8 @@ priorities or delivered capabilities change.
 - OHLCV and strictly increasing timestamp validation: [#15](https://github.com/KhizarImran/backtestingfx/issues/15),
   [market-data rules](MARKET_DATA.md).
 - Python broker, size, and signal validation: [#16](https://github.com/KhizarImran/backtestingfx/issues/16).
+- Explicit numeric timestamp units, UTC normalization, and consistent report times:
+  [#17](https://github.com/KhizarImran/backtestingfx/issues/17), [timestamp rules](MARKET_DATA.md#timestamp-sources-and-ordering).
 - Independent native engine runs: [#18](https://github.com/KhizarImran/backtestingfx/issues/18).
 - Asserted cross-library comparisons: [#38](https://github.com/KhizarImran/backtestingfx/issues/38).
 - Linear batch SL/TP processing: [#47](https://github.com/KhizarImran/backtestingfx/issues/47).
@@ -30,7 +32,6 @@ priorities or delivered capabilities change.
 ## 1. Core adoption (P1)
 
 - Configurable market execution timing and final liquidation: [#10](https://github.com/KhizarImran/backtestingfx/issues/10).
-- Numeric timestamp units and timezone policy: [#17](https://github.com/KhizarImran/backtestingfx/issues/17).
 - Time-varying quote-to-account conversion: [#12](https://github.com/KhizarImran/backtestingfx/issues/12).
 - Margin, pending orders, and risk sizing: [#9](https://github.com/KhizarImran/backtestingfx/issues/9), [#24](https://github.com/KhizarImran/backtestingfx/issues/24), [#26](https://github.com/KhizarImran/backtestingfx/issues/26).
 - Public strategy data, indicators, and parameters: [#19](https://github.com/KhizarImran/backtestingfx/issues/19), [#20](https://github.com/KhizarImran/backtestingfx/issues/20), [#21](https://github.com/KhizarImran/backtestingfx/issues/21).
