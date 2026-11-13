@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- Optional immutable `MarginConfig`, current-price gross used/free margin,
+  cost-aware entry checks, returned `OrderResult` values, durable rejection
+  records, and full-book liquidation with terminal account status. Python,
+  native, and signal execution share the policy; margin defaults to disabled.
+- Margin configuration and stopout evidence in HTML reports, plus a
+  [margin guide](MARGINS.md) and hand-calculated examples.
 - Explicit Python `timestamp_unit` and native CSV `TimestampUnit` options for
   numeric epoch input. Naive datetimes mean UTC; offsets normalize to UTC.
 - Optional `SwapConfig` for signed long/short overnight financing in account
@@ -22,6 +28,8 @@
   API/platform compatibility policy, and a prioritized FX roadmap.
 
 ### Fixed
+- Nonpositive-equity histories return zero Sharpe instead of dividing by zero
+  or computing percentage returns on debt.
 - Timestamp conversion floors to exact whole seconds, including before 1970,
   without floating-point rounding or row promotion of integer timestamps.
   Reports use the same saved seconds as the engine and financing ledger.
@@ -64,6 +72,13 @@
   the exit-side spread (future exit commission is still charged only at closing).
 
 ### Migration
+- Strategy and Broker `buy`/`sell` return `OrderResult` instead of `None`.
+  Native `Engine::run` and `run_with_swap` return
+  `Result<Stats, SimulationError>`, and native broker close methods and
+  `check_sl_tp` return `Result<(), MarginError>`. Handle results with `?` or a
+  match. Margin checks
+  require an explicit `MarginConfig`. A stopout halts further callbacks, retains
+  real negative cash, and preserves the full equity timeline. See [MARGINS.md](MARGINS.md).
 - Numeric timestamp columns now require `timestamp_unit="s"`, `"ms"`, `"us"`, or
   `"ns"`. Use `"ns"` for the previous implicit pandas units. Fractional dates
   floor instead of rounding and truncating; rerun affected backtests and resolve

@@ -64,6 +64,7 @@ Run these from the repository root after building/installing the package:
 python examples/sma_cross.py
 python examples/optimize.py
 python examples/swaps.py
+python examples/margin.py
 python examples/html_report.py
 cargo run --example simple_strategy
 ```

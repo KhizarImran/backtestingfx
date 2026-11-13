@@ -7,10 +7,11 @@
 //! in Python; consuming them is pure Rust, so the GIL can be released and the whole
 //! grid runs on real threads.
 
+#[cfg(test)]
 use crate::broker::Broker;
-use crate::engine::Engine;
+use crate::engine::{Engine, SimulationError};
 use crate::stats::Stats;
-use crate::swap::{SwapError, SwapPlan};
+use crate::swap::SwapPlan;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -20,14 +21,12 @@ use pyo3::prelude::*;
 /// *has* to build its own Broker, which is what makes it safe to run many of these
 /// across threads on one Engine. (It also means, unlike `Engine::run`, that calling
 /// it twice gives the same answer twice.)
-fn simulate(engine: &Engine, target: &[f64], plan: Option<&SwapPlan>) -> Result<Stats, SwapError> {
-    let mut broker = Broker::new(
-        engine.broker.initial_cash,
-        engine.broker.commission,
-        engine.broker.spread,
-        engine.broker.contract_size,
-        engine.broker.quote_to_account,
-    );
+fn simulate(
+    engine: &Engine,
+    target: &[f64],
+    plan: Option<&SwapPlan>,
+) -> Result<Stats, SimulationError> {
+    let mut broker = engine.broker.fresh();
     let mut equity_curve = Vec::with_capacity(engine.data.len() + 1);
     equity_curve.push(broker.initial_cash);
     let mut rollover = plan.map(SwapPlan::cursor);
@@ -36,7 +35,7 @@ fn simulate(engine: &Engine, target: &[f64], plan: Option<&SwapPlan>) -> Result<
         if let Some(cursor) = &mut rollover {
             cursor.apply_through(bar.timestamp, &mut broker)?;
         }
-        broker.check_sl_tp(bar);
+        broker.begin_bar(bar)?;
 
         // signed exposure: longs count positive, shorts negative
         let have: f64 = broker
@@ -48,8 +47,8 @@ fn simulate(engine: &Engine, target: &[f64], plan: Option<&SwapPlan>) -> Result<
         // ponytail: any change in target flattens and reopens, so a resize pays
         // commission on the full size. Adjust the existing position instead if that
         // drag starts distorting the grid.
-        if (want - have).abs() > 1e-9 {
-            broker.close_all(bar.close, bar.timestamp);
+        if broker.is_active() && (want - have).abs() > 1e-9 {
+            broker.close_all(bar.close, bar.timestamp)?;
             if want > 0.0 {
                 broker.buy(bar.close, want, bar.timestamp, None, None);
             } else if want < 0.0 {
@@ -57,13 +56,15 @@ fn simulate(engine: &Engine, target: &[f64], plan: Option<&SwapPlan>) -> Result<
             }
         }
 
-        equity_curve.push(broker.equity(bar.close));
+        equity_curve.push(broker.end_bar(bar)?);
     }
 
     // match Engine::run: liquidate at the last bar and let that land in the curve
     if let Some(last_bar) = engine.data.last() {
-        broker.close_all(last_bar.close, last_bar.timestamp);
-        *equity_curve.last_mut().unwrap() = broker.cash;
+        broker.finalize(last_bar)?;
+        if let Some(last) = equity_curve.last_mut() {
+            *last = broker.cash;
+        }
     }
 
     Ok(Stats::compute(&broker, &equity_curve))
@@ -113,7 +114,10 @@ pub fn run_grid(
                 .chunks(chunk)
                 .map(|slice| {
                     scope.spawn(move || {
-                        slice.iter().map(|s| simulate(engine, s, plan)).collect::<Vec<_>>()
+                        slice
+                            .iter()
+                            .map(|s| simulate(engine, s, plan))
+                            .collect::<Vec<_>>()
                     })
                 })
                 .collect();
@@ -121,7 +125,7 @@ pub fn run_grid(
             handles
                 .into_iter()
                 .flat_map(|h| h.join().unwrap())
-                .collect::<Result<Vec<_>, SwapError>>()
+                .collect::<Result<Vec<_>, SimulationError>>()
         })
     })?)
 }
@@ -130,6 +134,36 @@ pub fn run_grid(
 mod tests {
     use super::*;
     use crate::types::Bar;
+
+    #[test]
+    fn native_and_signal_paths_agree_on_margin_rejections_and_stopout() {
+        use crate::margin::MarginConfig;
+        use crate::strategy::Strategy;
+        struct Hold(f64);
+        impl Strategy for Hold {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                if broker.positions.is_empty() {
+                    broker.buy(bar.close, self.0, bar.timestamp, None, None);
+                }
+            }
+        }
+        for lots in [0.2, 10.0] {
+            let data = [1.1, 1.0, 1.3]
+                .into_iter()
+                .zip(0..)
+                .map(|(price, timestamp)| Bar::new(timestamp, price, price, price, price, 0.0))
+                .collect();
+            let mut engine = Engine::new(data, 1000.0, 0.0, 0.0, 100_000.0, 1.0)
+                .with_margin(MarginConfig::new(30.0, 0.5).unwrap());
+            let signal = simulate(&engine, &[lots; 3], None).unwrap();
+            let native = engine.run(&mut Hold(lots)).unwrap();
+            assert_eq!(native.equity_curve, signal.equity_curve);
+            assert_eq!(native.account_status(), signal.account_status());
+            assert_eq!(native.order_rejections.len(), signal.order_rejections.len());
+            assert_eq!(native.num_trades, signal.num_trades);
+            assert_eq!(native.final_cash, signal.final_cash);
+        }
+    }
 
     // two bars, price rises 1.1000 -> 1.2000, no costs
     fn test_engine() -> Engine {
@@ -185,12 +219,19 @@ mod tests {
         struct Hold;
         impl Strategy for Hold {
             fn next(&mut self, bar: &Bar, broker: &mut Broker) {
-                if broker.positions.is_empty() { broker.buy(bar.close, 0.4, bar.timestamp, None, None); }
+                if broker.positions.is_empty() {
+                    broker.buy(bar.close, 0.4, bar.timestamp, None, None);
+                }
             }
         }
-        let data = [0, 86400, 172800].map(|timestamp| Bar::new(timestamp, 1.1, 1.1, 1.1, 1.1, 0.0)).to_vec();
+        let data = [0, 86400, 172800]
+            .map(|timestamp| Bar::new(timestamp, 1.1, 1.1, 1.1, 1.1, 0.0))
+            .to_vec();
         let mut engine = Engine::new(data, 10_000.0, 7.0, 0.0001, 100_000.0, 1.27);
-        let config = SwapConfig::new(-10.0, 2.0).unwrap().with_weekday_multipliers([1.0; 7]).unwrap();
+        let config = SwapConfig::new(-10.0, 2.0)
+            .unwrap()
+            .with_weekday_multipliers([1.0; 7])
+            .unwrap();
         let plan = config.plan(&engine.data).unwrap();
         let native = engine.run_with_swap(&mut Hold, &config).unwrap();
         for _ in 0..2 {

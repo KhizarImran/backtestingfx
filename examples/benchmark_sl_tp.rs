@@ -17,7 +17,7 @@ fn main() {
             }
             let bar = Bar::new(count as i64, 1.1, 1.11, 1.08, 1.1, 0.0);
             let start = Instant::now();
-            broker.check_sl_tp(black_box(&bar));
+            broker.check_sl_tp(black_box(&bar)).unwrap();
             times.push(start.elapsed());
             assert!(broker.positions.is_empty());
             assert_eq!(broker.trade_history.len(), count);

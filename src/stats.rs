@@ -1,4 +1,5 @@
 use crate::broker::Broker;
+use crate::margin::{Liquidation, MarginConfig, OrderRejection, RiskState};
 use crate::types::{SwapCharge, Trade};
 use pyo3::prelude::*;
 
@@ -36,10 +37,13 @@ pub struct Stats {
     pub total_swap: f64,
     #[pyo3(get)]
     pub swap_charges: Vec<SwapCharge>,
+    #[pyo3(get)]
+    pub order_rejections: Vec<OrderRejection>,
+    risk: RiskState,
 }
 
 fn sharpe_ratio(equity_curve: &[f64]) -> f64 {
-    if equity_curve.len() < 2 {
+    if equity_curve.len() < 2 || equity_curve.iter().any(|equity| *equity <= 0.0) {
         return 0.0;
     }
     let returns: Vec<f64> = equity_curve
@@ -74,6 +78,21 @@ fn max_drawdown(equity_curve: &[f64]) -> f64 {
 
 #[pymethods]
 impl Stats {
+    #[getter]
+    pub fn margin(&self) -> Option<MarginConfig> {
+        self.risk.config()
+    }
+
+    #[getter]
+    pub fn account_status(&self) -> &'static str {
+        self.risk.status()
+    }
+
+    #[getter]
+    pub fn liquidation(&self) -> Option<Liquidation> {
+        self.risk.liquidation().cloned()
+    }
+
     fn __repr__(&self) -> String {
         format!("{}", self)
     }
@@ -147,6 +166,8 @@ impl Stats {
             trades: broker.trade_history.clone(),
             total_swap: broker.total_swap,
             swap_charges: broker.swap_charges.clone(),
+            order_rejections: broker.order_rejections.clone(),
+            risk: broker.risk.clone(),
         }
     }
 }
@@ -180,6 +201,15 @@ impl std::fmt::Display for Stats {
             self.max_drawdown_pct,
             self.total_swap,
             self.sharpe_ratio
-        )
+        )?;
+        if self.risk.config().is_some() {
+            write!(
+                f,
+                "\nAccount Status: {}\nRejected Orders: {}",
+                self.risk.status(),
+                self.order_rejections.len()
+            )?;
+        }
+        Ok(())
     }
 }
