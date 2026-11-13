@@ -52,7 +52,11 @@ Configuration is immutable; input and returned calendar dictionaries are copied.
 ## Rollover ordering and timestamps
 
 The engine uses the bars' Unix timestamps in seconds. It does not infer candle
-close times or an intrabar path. At each observed bar it:
+close times or an intrabar path. Numeric input requires explicit units; naive
+datetimes mean UTC, and fractional input floors to whole seconds. The input
+timezone and `SwapConfig.timezone` are separate: the latter defines the local
+rollover calendar. See [timestamp rules](MARKET_DATA.md#timestamp-sources-and-ordering).
+At each observed bar it:
 
 1. Posts all scheduled rollovers since the previous observation, including any
    cutoff exactly at the current timestamp.

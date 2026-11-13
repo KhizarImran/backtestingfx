@@ -1,7 +1,7 @@
 //! Checked market-data parsing shared by Python buffers and native CSV input.
 
 use crate::types::Bar;
-use chrono::DateTime;
+use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use pyo3::buffer::{Element, PyBuffer, ReadOnlyCell};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -71,7 +71,7 @@ impl fmt::Display for DataError {
             ),
             Self::Timestamp { index, value } => write!(
                 f,
-                "bar {index}: timestamp must be an RFC 3339 datetime, got {value:?}"
+                "bar {index}: timestamp must be an RFC 3339/ISO datetime or integer epoch with explicit TimestampUnit, got {value:?}"
             ),
             Self::Io(error) => write!(f, "could not read market data: {error}"),
             Self::Csv(error) => write!(f, "could not parse market-data CSV: {error}"),
@@ -225,11 +225,72 @@ pub(crate) fn bars_from_columns(py: Python<'_>, columns: BarColumns) -> PyResult
 }
 
 /// Load checked, chronologically ordered OHLCV data; volume is optional.
+/// Naive ISO datetimes are UTC; offsets normalize to UTC. Fractions floor.
+/// For integer epoch input, use [`load_csv_with_timestamp_unit`].
 pub fn load_csv(path: &str) -> Result<Vec<Bar>, DataError> {
     read_csv(File::open(path)?)
 }
 
+/// Units for signed integer epoch timestamps in CSV input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimestampUnit {
+    Seconds,
+    Milliseconds,
+    Microseconds,
+    Nanoseconds,
+}
+
+impl TimestampUnit {
+    fn per_second(self) -> i128 {
+        match self {
+            Self::Seconds => 1,
+            Self::Milliseconds => 1_000,
+            Self::Microseconds => 1_000_000,
+            Self::Nanoseconds => 1_000_000_000,
+        }
+    }
+}
+
+/// Load CSV with explicit units for integer epoch fields. Datetime fields keep
+/// the same UTC policy as [`load_csv`], independently of this setting.
+pub fn load_csv_with_timestamp_unit(
+    path: &str,
+    unit: TimestampUnit,
+) -> Result<Vec<Bar>, DataError> {
+    read_csv_with_timestamp_unit(File::open(path)?, Some(unit))
+}
+
+fn parse_timestamp(value: &str, unit: Option<TimestampUnit>) -> Option<i64> {
+    let value = value.trim();
+    let digits = value.trim_start_matches(['+', '-']);
+    if !digits.is_empty() && digits.bytes().all(|digit| digit.is_ascii_digit()) {
+        let raw = value.parse::<i128>().ok()?;
+        return i64::try_from(raw.div_euclid(unit?.per_second())).ok();
+    }
+    if let Ok(time) = DateTime::parse_from_rfc3339(value) {
+        // Leap seconds have no representation in the engine's POSIX clock.
+        return (time.timestamp_subsec_nanos() < 1_000_000_000).then(|| time.timestamp());
+    }
+    for format in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f"] {
+        if let Ok(time) = NaiveDateTime::parse_from_str(value, format) {
+            let time = time.and_utc();
+            return (time.timestamp_subsec_nanos() < 1_000_000_000).then(|| time.timestamp());
+        }
+    }
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .ok()?
+        .and_hms_opt(0, 0, 0)
+        .map(|time| time.and_utc().timestamp())
+}
+
 fn read_csv(reader: impl Read) -> Result<Vec<Bar>, DataError> {
+    read_csv_with_timestamp_unit(reader, None)
+}
+
+fn read_csv_with_timestamp_unit(
+    reader: impl Read,
+    unit: Option<TimestampUnit>,
+) -> Result<Vec<Bar>, DataError> {
     let mut reader = csv::Reader::from_reader(reader);
     let mut columns = HashMap::new();
     for (index, name) in reader.headers()?.iter().enumerate() {
@@ -257,7 +318,7 @@ fn read_csv(reader: impl Read) -> Result<Vec<Bar>, DataError> {
     for (index, record) in reader.records().enumerate() {
         let record = record?;
         let time =
-            DateTime::parse_from_rfc3339(&record[timestamp]).map_err(|_| DataError::Timestamp {
+            parse_timestamp(&record[timestamp], unit).ok_or_else(|| DataError::Timestamp {
                 index,
                 value: record[timestamp].to_owned(),
             })?;
@@ -271,7 +332,7 @@ fn read_csv(reader: impl Read) -> Result<Vec<Bar>, DataError> {
                 })
         };
         let bar = Bar::new(
-            time.timestamp(),
+            time,
             number(prices[0], "open")?,
             number(prices[1], "high")?,
             number(prices[2], "low")?,
@@ -291,6 +352,60 @@ fn read_csv(reader: impl Read) -> Result<Vec<Bar>, DataError> {
 mod tests {
     use super::*;
     use crate::engine::Engine;
+
+    #[test]
+    fn csv_timestamps_match_python_shared_fixture() {
+        let csv = include_str!("../tests/data/timestamps.csv");
+        let bars = read_csv(csv.as_bytes()).unwrap();
+        assert_eq!(
+            bars.iter().map(|bar| bar.timestamp).collect::<Vec<_>>(),
+            [-2, -1, 0, 1767225600, 1767225601, 1767312000]
+        );
+    }
+
+    #[test]
+    fn csv_numeric_units_floor_exactly_and_require_a_unit() {
+        for unit in [
+            TimestampUnit::Seconds,
+            TimestampUnit::Milliseconds,
+            TimestampUnit::Microseconds,
+            TimestampUnit::Nanoseconds,
+        ] {
+            let factor = unit.per_second();
+            let csv = format!(
+                "timestamp,open,high,low,close\n{},1,1,1,1\n0,1,1,1,1\n{},1,1,1,1\n",
+                -factor,
+                1767225600 * factor
+            );
+            assert!(matches!(
+                read_csv(csv.as_bytes()),
+                Err(DataError::Timestamp { index: 0, .. })
+            ));
+            let bars = read_csv_with_timestamp_unit(csv.as_bytes(), Some(unit)).unwrap();
+            assert_eq!(
+                bars.iter().map(|bar| bar.timestamp).collect::<Vec<_>>(),
+                [-1, 0, 1767225600]
+            );
+            assert_eq!(parse_timestamp("-1", Some(unit)), Some(-1));
+        }
+        for seconds in [i64::MIN, i64::MAX, 2_i64.pow(53) + 1] {
+            for unit in [TimestampUnit::Seconds, TimestampUnit::Nanoseconds] {
+                let raw = i128::from(seconds) * unit.per_second();
+                assert_eq!(parse_timestamp(&raw.to_string(), Some(unit)), Some(seconds));
+            }
+        }
+        for value in [
+            "9223372036854775808",
+            "-9223372036854775809",
+            "NaN",
+            "inf",
+            "",
+            "1.5",
+            "2016-12-31T23:59:60Z",
+        ] {
+            assert_eq!(parse_timestamp(value, Some(TimestampUnit::Seconds)), None);
+        }
+    }
 
     #[test]
     fn prices_volume_and_ranges_are_checked_without_rejecting_flat_bars() {

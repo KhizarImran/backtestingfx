@@ -4,6 +4,7 @@ from typing import Any
 from backtestingfx import _backtestingfx as _rust  # type: ignore
 import numpy as np
 import pandas as pd
+from backtestingfx._timestamps import UNITS, index_seconds, timestamp_value
 
 
 class _DataView:
@@ -125,6 +126,9 @@ class Backtest:
     """Backtest midpoint OHLC data with a full bid–ask spread in price units.
 
     OHLCV and timestamp column names are case-insensitive.
+    Numeric timestamp columns require timestamp_unit='s', 'ms', 'us', or 'ns'.
+    Naive datetimes mean UTC; aware datetimes retain their UTC instant. All
+    timestamps floor to whole Unix seconds before ordering checks.
 
     Fills apply half the spread on each side of the midpoint. Open equity marks
     positions at their closing bid/ask, excluding future exit commission.
@@ -141,6 +145,7 @@ class Backtest:
         quote_to_account=1.0,
         *,
         swap=None,
+        timestamp_unit=None,
     ):
         if not isinstance(df, pd.DataFrame):
             raise TypeError("market data must be a pandas DataFrame")
@@ -155,8 +160,14 @@ class Backtest:
         if swap is not None and not isinstance(swap, _rust.SwapConfig):
             raise TypeError("swap must be a SwapConfig or None")
         self._swap = swap
+        if timestamp_unit is not None and (
+            not isinstance(timestamp_unit, str) or timestamp_unit not in UNITS
+        ):
+            raise ValueError("timestamp_unit must be None, 's', 'ms', 'us', or 'ns'")
+        self._timestamp_unit = timestamp_unit
         self._stats = None
         self._report_df = None
+        self._report_timestamps = None
 
     def _bar_columns(self, df):
         required = {"open", "high", "low", "close"}
@@ -186,7 +197,7 @@ class Backtest:
         if not numeric or not isinstance(df.index, pd.DatetimeIndex) or df.index.hasnans:
             return self._scalar_bar_columns(df, columns)
 
-        timestamps = self._timestamps(df.index)
+        timestamps = index_seconds(df.index)
         values = []
         for name in names:
             if name not in columns:
@@ -197,35 +208,6 @@ class Backtest:
         return timestamps, values
 
     @staticmethod
-    def _timestamps(index):
-        unit = getattr(index, "unit", "ns")
-        factor = {"s": 1, "ms": 1_000, "us": 1_000_000, "ns": 1_000_000_000}.get(unit)
-        raw = index.asi8
-        if factor is not None and (raw % factor == 0).all():
-            seconds = raw // factor
-            # timestamp() returns a float, which cannot represent every integer
-            # beyond 2**53 seconds. Keep its scalar rounding for those dates.
-            if not len(seconds) or (seconds.min() >= -(2**53) and seconds.max() <= 2**53):
-                return np.ascontiguousarray(seconds, dtype=np.int64)
-        # timestamp() rounds fractional seconds before int() truncates.
-        # Preserve that behavior, including before the Unix epoch.
-        return np.fromiter((Backtest._timestamp_value(stamp, offset) for offset, stamp in enumerate(index)),
-                           dtype=np.int64, count=len(index))
-
-    @staticmethod
-    def _timestamp_value(value, offset):
-        try:
-            stamp = value if isinstance(value, pd.Timestamp) else pd.Timestamp(value)
-            if pd.isna(stamp):
-                raise ValueError("missing timestamp")
-            seconds = int(stamp.timestamp())
-            if not -(2**63) <= seconds < 2**63:
-                raise ValueError("timestamp outside int64 seconds")
-            return seconds
-        except (TypeError, ValueError, OverflowError) as error:
-            raise ValueError(f"bar {offset}: timestamp must be a valid datetime convertible to int64 Unix seconds") from error
-
-    @staticmethod
     def _float_value(value, field, offset):
         try:
             if np.iscomplexobj(value):
@@ -234,18 +216,18 @@ class Backtest:
         except (TypeError, ValueError, OverflowError) as error:
             raise ValueError(f"bar {offset}: {field} must be a real number, got {value!r}") from error
 
-    @staticmethod
-    def _scalar_bar_columns(df, columns):
+    def _scalar_bar_columns(self, df, columns):
         timestamps = np.empty(len(df), dtype=np.int64)
         values = np.empty((5, len(df)), dtype=np.float64)
         names = ("open", "high", "low", "close", "volume")
         positions = [df.columns.get_loc(columns[name]) if name in columns else None for name in names]
-        timestamp_position = df.columns.get_loc(columns["timestamp"]) if "timestamp" in columns else None
+        source = df[columns["timestamp"]].array if "timestamp" in columns else None
         # The old iterrows() converter used this common row dtype. Preserve its
-        # numeric promotion and scalar errors without constructing a Series per row.
+        # OHLCV promotion and scalar errors without constructing a Series per row.
+        # Read timestamps separately so integer epochs never promote to float.
         for offset, (idx, row) in enumerate(zip(df.index, df.to_numpy())):
-            stamp = idx if isinstance(idx, pd.Timestamp) else row[timestamp_position]
-            timestamps[offset] = Backtest._timestamp_value(stamp, offset)
+            stamp = idx if isinstance(idx, pd.Timestamp) else source[offset]
+            timestamps[offset] = timestamp_value(stamp, offset, self._timestamp_unit)
             for field, position in enumerate(positions):
                 values[field, offset] = Backtest._float_value(row[position], names[field], offset) if position is not None else 0.0
         return timestamps, values
@@ -253,9 +235,9 @@ class Backtest:
     def _to_bars(self, df):
         return _rust._bars_from_columns(self._bar_columns(df))
 
-    def _engine(self, df):
+    def _engine(self, df, columns=None):
         return _rust.Engine._from_columns(  # type: ignore
-            self._bar_columns(df),
+            self._bar_columns(df) if columns is None else columns,
             self._cash,
             self._commission,
             self._spread,
@@ -270,11 +252,14 @@ class Backtest:
 
         self._stats = None
         self._report_df = None
+        self._report_timestamps = None
         report_df = self._df.copy(deep=True)
-        engine = self._engine(report_df)
+        columns = self._bar_columns(report_df)
+        engine = self._engine(report_df, columns)
         strategy = self._strategy_class()
         self._stats = engine.run(_Adapter(strategy))
         self._report_df = report_df
+        self._report_timestamps = columns[0].copy()
         return self._stats
 
     def optimize(self, signal_fn, maximize="total_return_pct", **grid):
@@ -335,6 +320,7 @@ class Backtest:
         return render_report(
             self._report_df,
             self._stats,
+            timestamps=self._report_timestamps,
             strategy_name=self._strategy_class.__name__,
             filename=filename,
             open_browser=open_browser,

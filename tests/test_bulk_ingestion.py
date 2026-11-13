@@ -49,11 +49,14 @@ def market(index=None):
 
 
 class BulkIngestionTest(unittest.TestCase):
-    def assert_matches_legacy(self, data):
+    def assert_matches_legacy(self, data, *, timestamp_unit=None, expected_timestamps=None):
         original = data.copy(deep=True)
         original_dtypes = data.dtypes.copy()
         expected = values(legacy_bars(data))
-        backtest = Backtest(data)
+        if expected_timestamps is not None:
+            for row, timestamp in zip(expected, expected_timestamps):
+                row[0] = timestamp
+        backtest = Backtest(data, timestamp_unit=timestamp_unit)
         capture = Capture()
         stats = backtest._engine(data).run(capture)
         for bars in (capture.history, capture.callbacks, backtest._to_bars(data)):
@@ -87,7 +90,7 @@ class BulkIngestionTest(unittest.TestCase):
             with self.subTest(variant=index):
                 self.assert_matches_legacy(variant)
 
-    def test_timestamp_units_timezones_and_fractional_rounding_match_legacy(self):
+    def test_datetime_units_timezones_and_fractional_flooring(self):
         indexes = [
             pd.DatetimeIndex(["1969-12-31 23:59:59", "1970-01-01", "2026-01-01"]),
             pd.DatetimeIndex(["1969-12-31 23:59:59.999999999",
@@ -99,7 +102,8 @@ class BulkIngestionTest(unittest.TestCase):
             pd.date_range("2026-10-25", periods=3, freq="h", tz="Europe/London"),
         ]
         for index in indexes:
-            self.assert_matches_legacy(market(index))
+            factor = {"s": 1, "ms": 1000, "us": 1000000, "ns": 1000000000}[getattr(index, "unit", "ns")]
+            self.assert_matches_legacy(market(index), expected_timestamps=index.asi8 // factor)
         for unit in ("s", "ms", "us", "ns"):
             index = indexes[0]
             if hasattr(index, "as_unit"):
@@ -111,17 +115,14 @@ class BulkIngestionTest(unittest.TestCase):
         data["timestamp"] = ["invalid"] * 3
         self.assert_matches_legacy(data)
 
-    def test_far_epoch_seconds_keep_float_rounding_and_overflow(self):
+    def test_far_epoch_seconds_are_exact_without_float_rounding(self):
         index = pd.DatetimeIndex(np.array([-(2**53 + 1), 0, 2**53 + 1],
                                           dtype=np.int64).astype("datetime64[s]"))
-        self.assert_matches_legacy(market(index))
-        index = pd.DatetimeIndex(np.array([2**63 - 1, 0, 1],
+        self.assert_matches_legacy(market(index), expected_timestamps=[-(2**53 + 1), 0, 2**53 + 1])
+        index = pd.DatetimeIndex(np.array([0, 1, 2**63 - 1],
                                           dtype=np.int64).astype("datetime64[s]"))
         data = market(index)
-        with self.assertRaises(OverflowError):
-            legacy_bars(data)
-        with self.assertRaisesRegex(ValueError, "timestamp"):
-            Backtest(data)._engine(data)
+        self.assertEqual([bar.timestamp for bar in Backtest(data)._to_bars(data)], [0, 1, 2**63 - 1])
 
     def test_unaligned_and_readonly_columns_are_normalized_for_run_and_optimize(self):
         data = market()
@@ -142,12 +143,16 @@ class BulkIngestionTest(unittest.TestCase):
 
     def test_timestamp_columns_and_mixed_object_indexes_match_legacy(self):
         for stamps in (["2026-01-01", "2026-01-01T02:00:00+01:00", "2026-01-02 03:00"],
-                       [-1_000_000_000, 0, 1_000_000_000],
-                       [-999999400, 1767225600999999400, 1767225601999999600],
                        pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC")):
             data = market().reset_index(drop=True)
             data["TimeStamp"] = stamps
             self.assert_matches_legacy(data)
+        for stamps, expected in (([-1_000_000_000, 0, 1_000_000_000], [-1, 0, 1]),
+                                 ([-999999400, 1767225600999999400, 1767225601999999600],
+                                  [-1, 1767225600, 1767225601])):
+            data = market().reset_index(drop=True)
+            data["TimeStamp"] = stamps
+            self.assert_matches_legacy(data, timestamp_unit="ns", expected_timestamps=expected)
         data = market().reset_index(drop=True)
         data["timestamp"] = ["invalid", "2026-01-02", "invalid"]
         data.index = pd.Index([pd.Timestamp("2026-01-01"), "use-column",

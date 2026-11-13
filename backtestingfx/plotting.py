@@ -10,6 +10,7 @@ def render_report(
     data,
     stats,
     *,
+    timestamps,
     strategy_name,
     filename,
     open_browser,
@@ -32,10 +33,7 @@ def render_report(
         raise ValueError("Cannot plot a backtest with no bars")
 
     columns = {str(column).lower(): column for column in data.columns}
-    if isinstance(data.index, pd.DatetimeIndex):
-        timestamps = pd.to_datetime(data.index, utc=True)
-    else:
-        timestamps = pd.to_datetime(data[columns["timestamp"]], utc=True)
+    timestamps = pd.to_datetime(timestamps, unit="s", utc=True)
 
     equity = list(stats.equity_curve)
     if len(equity) == len(data) + 1:

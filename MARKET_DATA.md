@@ -46,10 +46,40 @@ timestamp column. Existing Timestamp values in an object index keep their
 precedence over that column. Missing timestamps, NaT, invalid datetime values,
 and values that cannot convert to int64 seconds produce actionable errors.
 
-This change preserves the existing timestamp conversion. Numeric timestamp
-columns still use pandas' implicit units, and fractional timestamp rounding
-remains unchanged. Explicit numeric units and a common timezone policy across
-loaders remain tracked in [#17](https://github.com/KhizarImran/backtestingfx/issues/17).
+Numeric timestamp columns require `timestamp_unit="s"`, `"ms"`, `"us"`, or
+`"ns"` on `Backtest`. The default `None` rejects numeric input rather than
+guessing a unit. Signed integer strings follow the same rule. Units apply only
+to numeric values; datetime strings and a DatetimeIndex keep their own units.
+Boolean, missing, nonfinite, and out-of-range timestamps raise `ValueError`.
+
+```python
+df = pd.DataFrame({
+	"timestamp": [1767225600000, 1767229200000],
+	"open": [1.1, 1.1], "high": [1.1, 1.1],
+	"low": [1.1, 1.1], "close": [1.1, 1.1],
+})
+bt = Backtest(df, MyStrategy, timestamp_unit="ms")
+```
+
+Naive datetime values mean UTC, independently of the machine's timezone.
+Timezone-aware values normalize to their UTC instant. For local naive input,
+localize it explicitly before passing it to `Backtest`, resolving ambiguous or
+nonexistent local times according to your data policy:
+
+```python
+df.index = pd.DatetimeIndex(df.index).tz_localize(
+	"America/New_York", ambiguous="raise", nonexistent="raise"
+).tz_convert("UTC")
+```
+
+All input floors to whole Unix seconds. For example, the instants
+`1969-12-31T23:59:59.999999999Z` and `1970-01-01T00:00:00.999999999Z` become
+`-1` and `0`, respectively. Integer input stays exact without conversion through
+float. Python also accepts finite floating-point numeric values; conversion
+floors the value actually stored in the float. Use integer epochs for precision.
+Reports use the run's saved engine seconds for candles, equity, and drawdown,
+matching the trade and financing ledger rather than parsing the source again.
+Report rendering remains limited to the datetime range supported by pandas.
 
 Ordering is checked on the converted engine timestamps. Two distinct
 subsecond observations that collapse to the same second are therefore rejected.
@@ -78,8 +108,11 @@ callbacks or return partially constructed engines.
 
 The native CSV loader now returns `Result<Vec<Bar>, DataError>` instead of
 panicking. CSV columns are resolved by case-insensitive name; timestamp need
-not be the first column, and volume is optional. Timestamps retain the existing
-RFC 3339 parser. Header-only input with the required columns returns an empty
+not be the first column, and volume is optional. `load_csv` accepts RFC 3339
+offsets, naive ISO datetimes with `T` or a space before `HH:MM:SS`, and ISO dates
+at midnight. Naive values mean UTC. Fractions floor to whole seconds, including
+before 1970. Leap seconds are rejected because the engine uses POSIX time.
+Header-only input with the required columns returns an empty
 series. Missing/duplicate columns, bad fields, invalid records, I/O failures,
 and timestamp-order problems return typed errors.
 
@@ -90,6 +123,24 @@ use _backtestingfx::data::load_csv;
 
 let bars = load_csv("data/EURUSD_1H.csv")?;
 ```
+
+Integer epoch CSV fields require the explicit-unit entry point:
+
+```rust
+use _backtestingfx::data::{load_csv_with_timestamp_unit, TimestampUnit};
+
+let bars = load_csv_with_timestamp_unit("prices.csv", TimestampUnit::Milliseconds)?;
+```
+
+The other variants are `Seconds`, `Microseconds`, and `Nanoseconds`. Integer
+parsing and division are exact, with the final value checked against int64
+seconds. Native CSV epoch fields accept signed whole integers; decimal and
+scientific notation are rejected. Use integer subsecond units or ISO datetime
+fractions for fractional CSV input. Datetime fields ignore the numeric unit.
+Both loaders agree on the shared datetime fixtures in
+[tests/data/timestamps.csv](tests/data/timestamps.csv). Python accepts additional
+datetime formats through pandas; the formats listed above are the portable CSV
+contract. Chrono's calendar range still applies to native datetime strings.
 
 Native code constructing bars itself can use `Bar::try_new`,
 `Engine::try_new`, or `data::validate_bars`. These APIs return `DataError` for
@@ -106,12 +157,27 @@ resolution. Missing data now raises a descriptive `ValueError` rather than an
 incidental KeyError or scalar conversion exception. The earlier swap-only
 allowance for repeated Python engine timestamps no longer applies.
 
+Numeric timestamps previously relied on pandas' implicit nanosecond units.
+Set `timestamp_unit="ns"` for data that intentionally used those units, or set
+the actual unit of the data. Fractional datetimes now floor instead of rounding
+through a floating-point `timestamp()` call and truncating toward zero. This can
+change bar ordering, trade timestamps, and which side of a rollover cutoff a
+bar occupies. Rerun affected backtests and resolve any new second collisions.
+
+For #17, timestamp regressions failed before the change in Python and native
+CSV loading. The current implementation passes 80 installed-package Python
+tests and 50 Rust tests, with Clippy warnings denied. Tests cover all four
+numeric units, exact large integers, fractions before and after 1970, timezone
+offsets, DST, missing/invalid values, report snapshots, and swap/signal agreement.
+
+### Market-data validation benchmark (#15)
+
 Regression tests first failed against main `acffca8`, including invalid prices
 and duplicate timestamps that did not raise. The checked implementation passes
 72 installed-package Python tests, including the optional reference fixtures,
 and 48 Rust tests. Clippy with warnings denied and the native CSV example pass.
 Valid-input tests retain case variants, optional volume, timezone indexes,
-numeric timestamp promotion, unaligned/strided/read-only buffers, independent
+OHLCV numeric promotion, unaligned/strided/read-only buffers, independent
 runs, report snapshots, and financing reconciliation.
 
 The existing matched benchmark was run in release mode before and after, with
