@@ -156,7 +156,10 @@ The design applies Microsoft's guidance on [validated types and library
 resilience](https://microsoft.github.io/rust-guidelines/guidelines/libs/resilience/)
 and [work in hot paths](https://microsoft.github.io/rust-guidelines/guidelines/performance/),
 with [explicit Result errors](https://google.github.io/comprehensive-rust/error-handling/result.html)
-for configured native execution. The existing disabled API stays infallible.
+for configured native execution. Native `run` and `run_with_swap` now return
+`SimulationError` results so [margin valuation failures](MARGINS.md) can also
+propagate. With both policies enabled, due swaps post before risk is assessed
+at the next observed open.
 No unsafe code or runtime timezone service is added.
 
 Tests cover debits and credits, boundary entries/exits, gap stops, multi-day

@@ -74,6 +74,14 @@ class Strategy:
     def equity(self):
         return self._broker.equity(self._bar.close) if self._broker else 0.0
 
+    @property
+    def used_margin(self):
+        return self._broker.used_margin(self._bar.close) if self._broker is not None else 0.0
+
+    @property
+    def free_margin(self):
+        return self._broker.free_margin(self._bar.close) if self._broker is not None else 0.0
+
     def init(self):
         pass
 
@@ -81,12 +89,12 @@ class Strategy:
         pass
 
     def buy(self, lot_size, stop_loss=None, take_profit=None):
-        self._broker.buy(
+        return self._broker.buy(
             self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit
         )
 
     def sell(self, lot_size, stop_loss=None, take_profit=None):
-        self._broker.sell(
+        return self._broker.sell(
             self._bar.close, lot_size, self._bar.timestamp, stop_loss, take_profit
         )
 
@@ -146,6 +154,7 @@ class Backtest:
         *,
         swap=None,
         timestamp_unit=None,
+        margin=None,
     ):
         if not isinstance(df, pd.DataFrame):
             raise TypeError("market data must be a pandas DataFrame")
@@ -160,6 +169,9 @@ class Backtest:
         if swap is not None and not isinstance(swap, _rust.SwapConfig):
             raise TypeError("swap must be a SwapConfig or None")
         self._swap = swap
+        if margin is not None and not isinstance(margin, _rust.MarginConfig):
+            raise TypeError("margin must be a MarginConfig or None")
+        self._margin = margin
         if timestamp_unit is not None and (
             not isinstance(timestamp_unit, str) or timestamp_unit not in UNITS
         ):
@@ -244,6 +256,7 @@ class Backtest:
             self._contract_size,
             self._quote_to_account,
             swap=self._swap,
+            margin=self._margin,
         )
 
     def run(self):

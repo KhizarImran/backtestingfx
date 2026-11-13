@@ -1,5 +1,6 @@
 pub mod broker;
 pub mod data;
+pub mod margin;
 pub mod engine;
 pub mod optimise;
 pub mod stats;
@@ -21,6 +22,10 @@ fn backtestingfx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::Trade>()?;
     m.add_class::<swap::SwapConfig>()?;
     m.add_class::<types::SwapCharge>()?;
+    m.add_class::<margin::MarginConfig>()?;
+    m.add_class::<margin::OrderResult>()?;
+    m.add_class::<margin::OrderRejection>()?;
+    m.add_class::<margin::Liquidation>()?;
     m.add_function(wrap_pyfunction!(optimise::run_grid, m)?)?;
     m.add_function(wrap_pyfunction!(validation::config, m)?)?;
     m.add_function(wrap_pyfunction!(data::bars_from_columns, m)?)?;

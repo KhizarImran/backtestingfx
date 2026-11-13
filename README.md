@@ -379,6 +379,15 @@ bt = Backtest(df, MyStrategy, cash=10000.0, spread=0.00015, quote_to_account=1.2
 
 ## Stats
 
+Optional [margin and liquidation](MARGINS.md) checks use
+`Backtest(df, MyStrategy, margin=MarginConfig(leverage=30))`. Import `MarginConfig`
+from `backtestingfx`. Margin is disabled by default. With checks enabled, orders
+can be rejected and a breached account stops trading after full-book liquidation.
+Strategy `buy()` and `sell()` return an `OrderResult`; inspect `accepted`,
+`position_id`, and `reason`. Strategy `used_margin` and `free_margin` use the
+current closing price. See the guide for gross hedges, costs, observed-price
+checks, and the [hand-calculated example](examples/margin.py).
+
 | Field | Description |
 |-------|-------------|
 | `initial_cash` | Starting balance |
@@ -397,6 +406,10 @@ bt = Backtest(df, MyStrategy, cash=10000.0, spread=0.00015, quote_to_account=1.2
 | `trades` | Completed exit records with entry, exit, size, direction, allocated swap, and net PnL |
 | `total_swap` | Signed financing posted to cash; zero when swaps are disabled |
 | `swap_charges` | Dated financing records with position ID, lots, direction, multiplier, and signed amount |
+| `margin` | Immutable margin configuration, or `None` for unlimited buying power |
+| `account_status` | `unrestricted`, `active`, or `liquidated` |
+| `order_rejections` | Dated rejected orders, reasons, and prospective account snapshots |
+| `liquidation` | Optional stopout evidence, including trigger, positions closed, and settled cash |
 
 Net trade PnL includes spread through fill prices, both commission legs, and
 allocated `trade.swap`. Negative swap values are charges; positive values are
@@ -429,12 +442,13 @@ behavior, and the native CSV loader's fallible API.
 
 Native Rust `Engine::run()` and Python `Engine.run_native_sma()` start each run
 with fresh broker state using the current initial cash and cost configuration.
-Cash, positions, completed trades, position IDs, financing, and equity history do not carry
+Cash, positions, completed trades, position IDs, financing, margin events, and equity history do not carry
 between runs. For native strategies with mutable internal state, reset that state
 in `Strategy::init()` or construct a fresh strategy for each run.
 
-Native `Engine::run_with_swap()` enables optional financing and returns a
-`Result`. Python `Engine(..., swap=config)` applies its configuration to Python
+Native `Engine::run()` and `run_with_swap()` return `Result<Stats, SimulationError>`.
+Handle failures with `?` or a match. `run_with_swap()` enables optional financing.
+Python `Engine(..., swap=config)` applies its configuration to Python
 callbacks and `run_native_sma()`. See [native swap execution](SWAPS.md#native-execution-and-optimization).
 
 ## Why Rust?

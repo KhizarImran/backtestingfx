@@ -409,13 +409,13 @@ mod tests {
         broker.buy(1.1, 1.0, 0, None, None);
         broker.apply_swap(1, 1.0, -10.0, 2.0).unwrap();
         assert_eq!(broker.cash, 9983.0);
-        broker.close_partial(0, 0.4, 1.1, 2);
+        broker.close_partial(0, 0.4, 1.1, 2).unwrap();
         assert!((broker.cash - 9980.2).abs() < 1e-8);
         assert_eq!(broker.trade_history[0].swap, -4.0);
         assert!((broker.trade_history[0].pnl + 9.6).abs() < 1e-8);
         assert_eq!(broker.positions[0].swap, -6.0);
         broker.apply_swap(3, 1.0, -10.0, 2.0).unwrap();
-        broker.close_all(1.1, 4);
+        broker.close_all(1.1, 4).unwrap();
         assert!((broker.cash - 9970.0).abs() < 1e-8);
         assert_eq!(broker.trade_history[1].swap, -12.0);
         assert_eq!(broker.total_swap, -16.0);
@@ -467,7 +467,7 @@ mod tests {
         engine.data = bars(&["2026-01-06T23:00:00Z", "2026-01-07T00:00:00Z"]);
         let stats = engine.run_with_swap(&mut Hold, &config).unwrap();
         assert_eq!(stats.total_swap, -30.0);
-        let disabled = engine.run(&mut Hold);
+        let disabled = engine.run(&mut Hold).unwrap();
         assert_eq!(disabled.final_cash, 10_000.0);
         assert_eq!(disabled.total_swap, 0.0);
         assert!(disabled.swap_charges.is_empty());

@@ -13,6 +13,8 @@ priorities or delivered capabilities change.
 
 ## Implemented on main (unreleased)
 
+- Optional leverage, gross margin, rejected orders, and terminal full-book liquidation:
+  [#9](https://github.com/KhizarImran/backtestingfx/issues/9), [margin guide](MARGINS.md).
 - Gap-aware stop/target fills: [#8](https://github.com/KhizarImran/backtestingfx/issues/8).
 - Documented stop-first intrabar policy: [#11](https://github.com/KhizarImran/backtestingfx/issues/11).
 - Optional swaps, rollover calendars, financing ledgers, and partial-close accounting:
@@ -33,7 +35,7 @@ priorities or delivered capabilities change.
 
 - Configurable market execution timing and final liquidation: [#10](https://github.com/KhizarImran/backtestingfx/issues/10).
 - Time-varying quote-to-account conversion: [#12](https://github.com/KhizarImran/backtestingfx/issues/12).
-- Margin, pending orders, and risk sizing: [#9](https://github.com/KhizarImran/backtestingfx/issues/9), [#24](https://github.com/KhizarImran/backtestingfx/issues/24), [#26](https://github.com/KhizarImran/backtestingfx/issues/26).
+- Pending orders and risk sizing: [#24](https://github.com/KhizarImran/backtestingfx/issues/24), [#26](https://github.com/KhizarImran/backtestingfx/issues/26).
 - Public strategy data, indicators, and parameters: [#19](https://github.com/KhizarImran/backtestingfx/issues/19), [#20](https://github.com/KhizarImran/backtestingfx/issues/20), [#21](https://github.com/KhizarImran/backtestingfx/issues/21).
 - Result exports and accounting tests: [#32](https://github.com/KhizarImran/backtestingfx/issues/32), [#37](https://github.com/KhizarImran/backtestingfx/issues/37).
 - Wheel coverage, platform CI, and API documentation: [#35](https://github.com/KhizarImran/backtestingfx/issues/35), [#36](https://github.com/KhizarImran/backtestingfx/issues/36), [#40](https://github.com/KhizarImran/backtestingfx/issues/40).
