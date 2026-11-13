@@ -594,10 +594,12 @@ impl Broker {
 
     #[inline]
     fn enforce_margin(&mut self, price: f64, timestamp: i64) -> Result<(), MarginError> {
-        match self.risk {
+        match &self.risk {
             RiskState::Disabled | RiskState::Liquidated { .. } => Ok(()),
-            RiskState::Active(config) => self.enforce_active_margin(config, price, timestamp),
-            RiskState::Failed { error, .. } => Err(error),
+            RiskState::Active(config) => {
+                self.enforce_active_margin(config.clone(), price, timestamp)
+            }
+            RiskState::Failed { error, .. } => Err(*error),
         }
     }
 

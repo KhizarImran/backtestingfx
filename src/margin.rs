@@ -34,7 +34,7 @@ impl From<MarginError> for PyErr {
 }
 
 #[pyclass(frozen, from_py_object)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MarginConfig {
     #[pyo3(get)]
     leverage: f64,
@@ -56,11 +56,11 @@ impl MarginConfig {
         })
     }
 
-    pub(crate) fn required(self, lots: f64, price: f64, contract: f64, conversion: f64) -> f64 {
+    pub(crate) fn required(&self, lots: f64, price: f64, contract: f64, conversion: f64) -> f64 {
         lots * contract * price * conversion / self.leverage
     }
 
-    pub(crate) fn maintenance(self, used_margin: f64) -> f64 {
+    pub(crate) fn maintenance(&self, used_margin: f64) -> f64 {
         self.maintenance_ratio * used_margin
     }
 }
@@ -215,7 +215,7 @@ impl RiskState {
             Self::Disabled => None,
             Self::Active(config)
             | Self::Liquidated { config, .. }
-            | Self::Failed { config, .. } => Some(*config),
+            | Self::Failed { config, .. } => Some(config.clone()),
         }
     }
 
