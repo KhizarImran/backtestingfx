@@ -12,6 +12,12 @@ use std::io::Read;
 
 #[derive(Debug)]
 pub enum DataError {
+    ReferenceRow {
+        index: usize,
+    },
+    MissingPrice {
+        index: usize,
+    },
     Price {
         index: usize,
         field: &'static str,
@@ -43,6 +49,13 @@ pub enum DataError {
 impl fmt::Display for DataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ReferenceRow { index } => write!(
+                f,
+                "bar {index}: reference row keys must be dense positions starting at zero"
+            ),
+            Self::MissingPrice { index } => {
+                write!(f, "bar {index}: OHLC values must not be missing (NaN)")
+            }
             Self::Price { index, field } => {
                 write!(f, "bar {index}: {field} must be positive and finite")
             }
@@ -85,6 +98,8 @@ impl std::error::Error for DataError {
             Self::Io(error) => Some(error),
             Self::Csv(error) => Some(error),
             Self::Price { .. }
+            | Self::ReferenceRow { .. }
+            | Self::MissingPrice { .. }
             | Self::Volume { .. }
             | Self::Range { .. }
             | Self::TimestampOrder { .. }
@@ -170,6 +185,24 @@ pub fn validate_bars(data: &[Bar]) -> Result<(), DataError> {
 
 pub(crate) type BarColumns = (PyBuffer<i64>, [PyBuffer<f64>; 5]);
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum InputValidation {
+    StrictFx,
+    ReferenceRows,
+}
+
+impl InputValidation {
+    pub(crate) fn parse(value: &str) -> PyResult<Self> {
+        match value {
+            "fx" => Ok(Self::StrictFx),
+            "reference" => Ok(Self::ReferenceRows),
+            _ => Err(PyValueError::new_err(
+                "validation must be 'fx' or 'reference'",
+            )),
+        }
+    }
+}
+
 fn column_slice<'a, T: Element>(
     py: Python<'a>,
     buffer: &'a PyBuffer<T>,
@@ -197,7 +230,20 @@ fn column_slice<'a, T: Element>(
 }
 
 #[pyfunction(name = "_bars_from_columns")]
-pub(crate) fn bars_from_columns(py: Python<'_>, columns: BarColumns) -> PyResult<Vec<Bar>> {
+#[pyo3(signature = (columns, *, validation="fx"))]
+pub(crate) fn bars_from_columns(
+    py: Python<'_>,
+    columns: BarColumns,
+    validation: &str,
+) -> PyResult<Vec<Bar>> {
+    bars_from_columns_with_policy(py, columns, InputValidation::parse(validation)?)
+}
+
+pub(crate) fn bars_from_columns_with_policy(
+    py: Python<'_>,
+    columns: BarColumns,
+    policy: InputValidation,
+) -> PyResult<Vec<Bar>> {
     let (timestamps, values) = columns;
     let count = timestamps.item_count();
     let timestamps = column_slice(py, &timestamps, count)?;
@@ -218,7 +264,20 @@ pub(crate) fn bars_from_columns(py: Python<'_>, columns: BarColumns) -> PyResult
             close[i].get(),
             volume[i].get(),
         );
-        validator.check(&bar)?;
+        match policy {
+            InputValidation::StrictFx => validator.check(&bar)?,
+            InputValidation::ReferenceRows => {
+                if i64::try_from(i).ok() != Some(bar.timestamp) {
+                    return Err(DataError::ReferenceRow { index: i }.into());
+                }
+                if [bar.open, bar.high, bar.low, bar.close]
+                    .iter()
+                    .any(|value| value.is_nan())
+                {
+                    return Err(DataError::MissingPrice { index: i }.into());
+                }
+            }
+        }
         data.push(bar);
     }
     Ok(data)

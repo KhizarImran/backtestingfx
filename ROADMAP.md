@@ -13,6 +13,11 @@ priorities or delivered capabilities change.
 
 ## Implemented on main (unreleased)
 
+- Reference DataFrame input and exact index labels through `data_mode="reference"`:
+  [#66](https://github.com/KhizarImran/backtestingfx/issues/66), [input guide](REFERENCE_INPUT.md).
+  The complete backtesting.py-compatible facade remains tracked in
+  [#61](https://github.com/KhizarImran/backtestingfx/issues/61).
+
 - Optional leverage, gross margin, rejected orders, and terminal full-book liquidation:
   [#9](https://github.com/KhizarImran/backtestingfx/issues/9), [margin guide](MARGINS.md).
 - Gap-aware stop/target fills: [#8](https://github.com/KhizarImran/backtestingfx/issues/8).

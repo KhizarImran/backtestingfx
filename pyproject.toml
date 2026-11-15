@@ -13,6 +13,7 @@ readme = "README.md"
 
 [project.optional-dependencies]
 report = ["plotly>=5"]
+test = ["backtesting==0.6.6"]
 
 [tool.maturin]
 module-name = "backtestingfx._backtestingfx"

@@ -14,6 +14,7 @@ use std::fmt;
 /// Invalid financing configuration or timestamps for an enabled swap schedule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwapError {
+    ReferenceClock,
     InvalidRate,
     InvalidTimezone(String),
     InvalidTime,
@@ -29,6 +30,7 @@ pub enum SwapError {
 impl fmt::Display for SwapError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ReferenceClock => write!(f, "reference row clock cannot drive a swap calendar"),
             Self::InvalidRate => write!(f, "swap long and short rates must be finite"),
             Self::InvalidTimezone(name) => write!(f, "unknown swap timezone: {name}"),
             Self::InvalidTime => write!(

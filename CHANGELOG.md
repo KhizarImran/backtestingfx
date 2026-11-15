@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- Optional `data_mode="reference"` for backtesting.py 0.6.6 DataFrame input:
+  periods, duplicate labels, exact timestamps, aligned features, indexed equity
+  and event views, and reports that retain source labels. The default FX input
+  policy and order API remain unchanged. Reference mode rejects calendar swaps.
+  See [REFERENCE_INPUT.md](REFERENCE_INPUT.md) for scope and remaining API work.
+- Required CI input-conformance fixtures against `backtesting==0.6.6` through
+  the `test` extra.
 - Optional immutable `MarginConfig`, current-price gross used/free margin,
   cost-aware entry checks, returned `OrderResult` values, durable rejection
   records, and full-book liquidation with terminal account status. Python,
@@ -33,7 +40,7 @@
 - Timestamp conversion floors to exact whole seconds, including before 1970,
   without floating-point rounding or row promotion of integer timestamps.
   Reports use the same saved seconds as the engine and financing ledger.
-- Market-data boundaries reject nonfinite/nonpositive OHLC values, inconsistent
+- Default FX market-data boundaries reject nonfinite/nonpositive OHLC values, inconsistent
   candle ranges, negative/nonfinite volume, and duplicate or backwards timestamps
   after conversion to whole seconds. Python errors identify the bar and field;
   empty inputs remain valid. Optimization checks data before calling signals.
