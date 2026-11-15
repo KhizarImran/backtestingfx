@@ -19,6 +19,7 @@ def render_report(
     contract_size,
     quote_to_account,
     swap=None,
+    snapshot=None,
 ):
     try:
         import plotly.graph_objects as go
@@ -32,8 +33,24 @@ def render_report(
     if data.empty:
         raise ValueError("Cannot plot a backtest with no bars")
 
-    columns = {str(column).lower(): column for column in data.columns}
-    timestamps = pd.to_datetime(timestamps, unit="s", utc=True)
+    reference = snapshot is not None
+    columns = ({name.lower(): name for name in ("Open", "High", "Low", "Close", "Volume")}
+               if reference else {str(column).lower(): column for column in data.columns})
+    timestamps = list(range(len(data))) if reference else pd.to_datetime(timestamps, unit="s", utc=True)
+
+    def time_label(value):
+        return value.isoformat() if isinstance(value, pd.Timestamp) else str(value)
+
+    labels = [time_label(value) for value in snapshot.index] if reference else [value.isoformat() for value in timestamps]
+
+    def event_time(value):
+        return value if reference else pd.to_datetime(value, unit="s", utc=True)
+
+    def ledger_time(value):
+        return time_label(value) if reference else value.strftime("%Y-%m-%d %H:%M")
+
+    def trade_x(trade, side):
+        return getattr(trade, f"{side}_bar") if reference else event_time(getattr(trade, f"{side}_timestamp"))
 
     equity = list(stats.equity_curve)
     if len(equity) == len(data) + 1:
@@ -62,6 +79,7 @@ def render_report(
             low=data[columns["low"]],
             close=data[columns["close"]],
             name="Price",
+            text=labels,
             increasing_line_color="#45d483",
             decreasing_line_color="#ff6b57",
         ),
@@ -74,8 +92,8 @@ def render_report(
     for trade in trades:
         entry_lines_x.extend(
             [
-                pd.to_datetime(trade.entry_timestamp, unit="s", utc=True),
-                pd.to_datetime(trade.exit_timestamp, unit="s", utc=True),
+                trade_x(trade, "entry"),
+                trade_x(trade, "exit"),
                 None,
             ]
         )
@@ -102,14 +120,14 @@ def render_report(
         if matching:
             chart.add_trace(
                 go.Scatter(
-                    x=[pd.to_datetime(t.entry_timestamp, unit="s", utc=True) for t in matching],
+                    x=[trade_x(t, "entry") for t in matching],
                     y=[t.entry_price for t in matching],
                     mode="markers",
                     name=label,
                     marker={"color": color, "size": 11, "symbol": symbol},
-                    customdata=[[t.lot_size, t.pnl] for t in matching],
+                    customdata=[[t.lot_size, t.pnl, time_label(event_time(t.entry_timestamp))] for t in matching],
                     hovertemplate=(
-                        f"{label}<br>%{{x}}<br>Price %{{y:.5f}}"
+                        f"{label}<br>%{{customdata[2]}}<br>Price %{{y:.5f}}"
                         "<br>Lots %{customdata[0]:.2f}<br>Net PnL %{customdata[1]:.2f}<extra></extra>"
                     ),
                 ),
@@ -120,7 +138,7 @@ def render_report(
     if trades:
         chart.add_trace(
             go.Scatter(
-                x=[pd.to_datetime(t.exit_timestamp, unit="s", utc=True) for t in trades],
+                x=[trade_x(t, "exit") for t in trades],
                 y=[t.exit_price for t in trades],
                 mode="markers",
                 name="Exit",
@@ -130,9 +148,9 @@ def render_report(
                     "size": 9,
                     "symbol": "circle",
                 },
-                customdata=[[t.pnl] for t in trades],
+                customdata=[[t.pnl, time_label(event_time(t.exit_timestamp))] for t in trades],
                 hovertemplate=(
-                    "Exit<br>%{x}<br>Price %{y:.5f}"
+                    "Exit<br>%{customdata[1]}<br>Price %{y:.5f}"
                     "<br>Net PnL %{customdata[0]:.2f}<extra></extra>"
                 ),
             ),
@@ -147,7 +165,8 @@ def render_report(
             mode="lines",
             name="Equity",
             line={"color": "#f1c75b", "width": 2},
-            hovertemplate="%{x}<br>Equity %{y:,.2f}<extra></extra>",
+            customdata=labels,
+            hovertemplate="%{customdata}<br>Equity %{y:,.2f}<extra></extra>",
         ),
         row=2,
         col=1,
@@ -167,7 +186,8 @@ def render_report(
             line={"color": "#ff6b57", "width": 1.5},
             fill="tozeroy",
             fillcolor="rgba(255, 107, 87, 0.20)",
-            hovertemplate="%{x}<br>Drawdown %{y:.2f}%<extra></extra>",
+            customdata=labels,
+            hovertemplate="%{customdata}<br>Drawdown %{y:.2f}%<extra></extra>",
         ),
         row=3,
         col=1,
@@ -183,6 +203,10 @@ def render_report(
         xaxis_rangeslider_visible=False,
     )
     chart.update_xaxes(gridcolor="rgba(255,255,255,0.06)", showspikes=True)
+    if reference:
+        ticks = list(range(0, len(data), max(1, len(data) // 8)))
+        chart.update_xaxes(type="linear", tickmode="array", tickvals=ticks,
+                           ticktext=[labels[i] for i in ticks], title_text="Source index")
     chart.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zeroline=False)
     chart.update_yaxes(title_text="Price", row=1, col=1)
     chart.update_yaxes(title_text="Equity", row=2, col=1)
@@ -258,15 +282,16 @@ def render_report(
 
     rows = []
     for trade in trades:
-        entry_time = pd.to_datetime(trade.entry_timestamp, unit="s", utc=True)
-        exit_time = pd.to_datetime(trade.exit_timestamp, unit="s", utc=True)
-        duration = exit_time - entry_time
+        entry_time = event_time(trade.entry_timestamp)
+        exit_time = event_time(trade.exit_timestamp)
+        duration = (f"{trade.exit_bar - trade.entry_bar} bars" if reference and not isinstance(snapshot.index, pd.DatetimeIndex)
+                    else str(exit_time - entry_time))
         result_class = "positive" if trade.pnl >= 0 else "negative"
         rows.append(
             "<tr>"
             f"<td>{'LONG' if trade.is_long else 'SHORT'}</td>"
-            f"<td>{html.escape(entry_time.strftime('%Y-%m-%d %H:%M'))}</td>"
-            f"<td>{html.escape(exit_time.strftime('%Y-%m-%d %H:%M'))}</td>"
+            f"<td>{html.escape(ledger_time(entry_time))}</td>"
+            f"<td>{html.escape(ledger_time(exit_time))}</td>"
             f"<td>{trade.entry_price:.5f}</td>"
             f"<td>{trade.exit_price:.5f}</td>"
             f"<td>{trade.lot_size:.2f}</td>"
@@ -325,20 +350,20 @@ def render_report(
         liquidation_html = "<p>No forced liquidation.</p>"
         event = stats.liquidation
         if event is not None:
-            stamp = pd.to_datetime(event.timestamp, unit="s", utc=True)
+            stamp = time_label(event_time(event.timestamp))
             liquidation_html = (
-                f'<p>Liquidated at {html.escape(stamp.isoformat())}, midpoint {event.price:g}. '
+                f'<p>Liquidated at {html.escape(stamp)}, midpoint {event.price:g}. '
                 f'Reason: {html.escape(event.reason)}. Positions closed: {event.positions_closed}. '
                 f'Equity before: {event.equity_before:,.2f}; used margin: {event.used_margin:,.2f}; '
                 f'settled balance: {event.cash_after:,.2f}. Further strategy callbacks are halted.</p>'
             )
         rejection_rows = []
         for rejection in stats.order_rejections:
-            stamp = pd.to_datetime(rejection.timestamp, unit="s", utc=True)
+            stamp = time_label(event_time(rejection.timestamp))
             equity = "unavailable" if rejection.equity_after_entry is None else f"{rejection.equity_after_entry:,.2f}"
             used = "unavailable" if rejection.required_margin is None else f"{rejection.required_margin:,.2f}"
             rejection_rows.append(
-                f'<tr><td>{html.escape(stamp.isoformat())}</td>'
+                f'<tr><td>{html.escape(stamp)}</td>'
                 f'<td>{"LONG" if rejection.is_long else "SHORT"}</td><td>{rejection.lot_size:g}</td>'
                 f'<td>{rejection.price:g}</td><td>{html.escape(rejection.reason)}</td>'
                 f'<td>{equity}</td><td>{used}</td></tr>'
@@ -349,7 +374,7 @@ def render_report(
             '<section class="panel"><div class="panel-head"><h2>Margin execution</h2>'
             f'<span class="section-label">{len(stats.order_rejections)} rejected orders</span></div>'
             f'<div style="padding: 0 20px">{liquidation_html}</div>'
-            '<div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Side</th>'
+            f'<div class="table-wrap"><table><thead><tr><th>{"Source index" if reference else "Time (UTC)"}</th><th>Side</th>'
             '<th>Lots</th><th>Midpoint</th><th>Reason</th><th>Post-entry equity</th>'
             '<th>Required margin</th></tr></thead>'
             f'<tbody>{"".join(rejection_rows)}</tbody></table></div></section>'
@@ -368,8 +393,8 @@ def render_report(
         include_plotlyjs=False,
         config=config,
     )
-    start = timestamps[0].strftime("%Y-%m-%d %H:%M UTC")
-    end = timestamps[-1].strftime("%Y-%m-%d %H:%M UTC")
+    start = html.escape(labels[0]) if reference else timestamps[0].strftime("%Y-%m-%d %H:%M UTC")
+    end = html.escape(labels[-1]) if reference else timestamps[-1].strftime("%Y-%m-%d %H:%M UTC")
     safe_strategy_name = html.escape(strategy_name)
 
     document = f"""<!doctype html>

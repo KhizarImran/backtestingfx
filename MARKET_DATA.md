@@ -1,5 +1,10 @@
 # Market-data validation
 
+This document describes `data_mode="fx"`, the default. For backtesting.py-style
+input and exact pandas index labels, select `data_mode="reference"` and read
+[reference input](REFERENCE_INPUT.md). Direct `Bar`, list-based `Engine`, and
+native CSV input always use the FX rules below.
+
 Python `Backtest`, `Bar`, and `Engine` inputs and the native CSV loader check
 market data before simulation. The same native rules cover list-based engines
 and bulk column ingestion. Valid input values are copied into owned native bars;

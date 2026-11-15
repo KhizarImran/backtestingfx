@@ -1,5 +1,5 @@
 use crate::broker::Broker;
-use crate::data::{self, BarColumns, DataError};
+use crate::data::{self, BarColumns, DataError, InputValidation};
 use crate::margin::{MarginConfig, MarginError};
 use crate::stats::Stats;
 use crate::strategy::Strategy;
@@ -62,6 +62,7 @@ pub struct Engine {
     pub broker: Broker,
     pub equity_curve: Vec<f64>,
     pub(crate) swap: Option<SwapConfig>,
+    input_validation: InputValidation,
 }
 
 impl Engine {
@@ -77,6 +78,7 @@ impl Engine {
         strategy: &mut dyn Strategy,
         swap: &SwapConfig,
     ) -> Result<Stats, SimulationError> {
+        self.require_calendar()?;
         let plan = swap.plan(&self.data)?;
         self.run_loop(strategy, Some(&plan))
     }
@@ -87,10 +89,20 @@ impl Engine {
     }
 
     pub(crate) fn swap_plan(&self) -> Result<Option<SwapPlan>, SwapError> {
+        if self.swap.is_some() {
+            self.require_calendar()?;
+        }
         self.swap
             .as_ref()
             .map(|swap| swap.plan(&self.data))
             .transpose()
+    }
+
+    fn require_calendar(&self) -> Result<(), SwapError> {
+        match self.input_validation {
+            InputValidation::StrictFx => Ok(()),
+            InputValidation::ReferenceRows => Err(SwapError::ReferenceClock),
+        }
     }
 
     fn run_loop(
@@ -205,6 +217,7 @@ impl Engine {
             ),
             equity_curve: Vec::new(),
             swap: None,
+            input_validation: InputValidation::StrictFx,
         }
     }
 }
@@ -216,7 +229,7 @@ impl Engine {
         clippy::too_many_arguments,
         reason = "preserve positional constructor arguments and add keyword-only account policies"
     )]
-    #[pyo3(signature = (columns, initial_cash, commission, spread, contract_size, quote_to_account, *, swap=None, margin=None))]
+    #[pyo3(signature = (columns, initial_cash, commission, spread, contract_size, quote_to_account, *, swap=None, margin=None, validation="fx"))]
     fn _from_columns(
         py: Python<'_>,
         columns: BarColumns,
@@ -227,6 +240,7 @@ impl Engine {
         quote_to_account: f64,
         swap: Option<SwapConfig>,
         margin: Option<MarginConfig>,
+        validation: &str,
     ) -> PyResult<Self> {
         validation::config(
             initial_cash,
@@ -235,7 +249,8 @@ impl Engine {
             contract_size,
             quote_to_account,
         )?;
-        let data = data::bars_from_columns(py, columns)?;
+        let input_validation = InputValidation::parse(validation)?;
+        let data = data::bars_from_columns_with_policy(py, columns, input_validation)?;
         let mut engine = Self::new(
             data,
             initial_cash,
@@ -245,6 +260,10 @@ impl Engine {
             quote_to_account,
         );
         engine.swap = swap;
+        engine.input_validation = input_validation;
+        if engine.swap.is_some() {
+            engine.require_calendar()?;
+        }
         if let Some(config) = margin {
             engine.broker = engine.broker.with_margin(config);
         }
@@ -359,6 +378,37 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn row_clock_rejects_native_financing_before_callbacks_or_account_mutation() {
+        struct MustNotRun;
+        impl Strategy for MustNotRun {
+            fn init(&mut self, _data: &[Bar]) {
+                panic!("calendar validation must precede callbacks");
+            }
+            fn next(&mut self, _bar: &Bar, _broker: &mut Broker) {
+                panic!("calendar validation must precede callbacks");
+            }
+        }
+        let mut engine = Engine::new(
+            vec![Bar::new(0, 1.1, 1.1, 1.1, 1.1, 0.0)],
+            10_000.0,
+            0.0,
+            0.0,
+            100_000.0,
+            1.0,
+        );
+        engine.input_validation = InputValidation::ReferenceRows;
+        let swap = SwapConfig::new(-1.0, 0.0).unwrap();
+        assert!(matches!(
+            engine.run_with_swap(&mut MustNotRun, &swap),
+            Err(SimulationError::Swap(SwapError::ReferenceClock))
+        ));
+        engine.swap = Some(swap);
+        assert!(matches!(engine.swap_plan(), Err(SwapError::ReferenceClock)));
+        assert_eq!(engine.broker.cash, 10_000.0);
+        assert!(engine.equity_curve.is_empty());
+    }
 
     #[test]
     fn ignored_native_exit_errors_still_fail_the_simulation_without_mutation() {

@@ -10,6 +10,12 @@ This README describes `main`, including changes listed as
 [Unreleased](CHANGELOG.md). See [Installation](#installation) to build the
 current checkout; an installed release can have fewer features.
 
+For backtesting.py-style DataFrame and index handling, use
+`Backtest(..., data_mode="reference")`. This preserves RangeIndex periods,
+duplicate labels, nanosecond timestamps, and timezones. See
+[reference input](REFERENCE_INPUT.md) for the supported API and remaining
+compatibility work. FX orders and sizing still apply in this mode.
+
 ```
 pip install backtestingfx
 ```

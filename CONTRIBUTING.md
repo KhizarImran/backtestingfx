@@ -22,7 +22,7 @@ cd backtestingfx
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "maturin>=1.0,<2.0" pandas numpy "plotly>=5"
+python -m pip install "maturin>=1.0,<2.0" pandas numpy "plotly>=5" "backtesting==0.6.6"
 maturin develop
 ```
 
@@ -44,7 +44,7 @@ Check the installed Python package outside the source directory, as CI does.
 This avoids accidentally importing the source package without its built extension.
 
 ```bash
-python -m pip install ".[report]"
+python -m pip install ".[report,test]"
 repo_dir="$PWD"
 cd /tmp
 python -m unittest discover -s "$repo_dir/tests"
@@ -53,7 +53,7 @@ cd "$repo_dir"
 
 On Windows, save the repository path, change to a temporary directory, and pass
 the absolute path to `tests` to `python -m unittest discover -s`. Reinstall
-with `python -m pip install --force-reinstall ".[report]"` after changes when
+with `python -m pip install --force-reinstall ".[report,test]"` after changes when
 using this regular installation rather than `maturin develop`.
 
 ## Examples
@@ -75,8 +75,8 @@ The HTML example generates synthetic data, writes
 `report` extra. Comparison and benchmark scripts additionally require
 `python -m pip install backtesting==0.6.6`; report their versions and execution
 assumptions when sharing results. See [the matched comparison](examples/benchmark.md)
-for correctness checks and separate setup/run timings. Reference-comparison tests
-skip when the optional dependency is absent.
+for correctness checks and separate setup/run timings. The `test` extra pins the
+reference package. Input conformance tests require it, and CI installs it.
 
 The swap example uses a small flat-price fixture and checks financing and
 partial-close reconciliation. See [SWAPS.md](SWAPS.md) for rate units, rollover

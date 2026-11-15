@@ -5,32 +5,50 @@ from backtestingfx import _backtestingfx as _rust  # type: ignore
 import numpy as np
 import pandas as pd
 from backtestingfx._timestamps import UNITS, index_seconds, timestamp_value
+from backtestingfx._input import InputMode, ReferenceSnapshot, prepare_reference, reference_columns
 
 
 class _DataView:
     # ponytail: a window over the full bars list, visible up to the current bar.
     # Slicing copies only the requested slice, not the growing prefix — this is
     # what keeps data access O(1) per bar instead of O(n) (was O(n^2) overall).
-    __slots__ = ("_bars", "_len")
+    __slots__ = ("_bars", "_len", "_snapshot")
 
-    def __init__(self, bars):
+    def __init__(self, bars, snapshot=None):
         self._bars = bars
         self._len = 0
+        self._snapshot = snapshot
+
+    @property
+    def index(self):
+        if self._snapshot is None:
+            raise AttributeError("this data view has no source index")
+        return self._snapshot.index[:self._len]
+
+    @property
+    def df(self):
+        if self._snapshot is None:
+            raise AttributeError("this data view has no source frame")
+        return self._snapshot.frame.iloc[:self._len]
+
+    def _bar(self, offset):
+        bar = self._bars[offset]
+        return bar if self._snapshot is None else self._snapshot.record(bar)
 
     def __len__(self):
         return self._len
 
     def __getitem__(self, i):
         if isinstance(i, slice):
-            return [self._bars[k] for k in range(*i.indices(self._len))]
+            return [self._bar(k) for k in range(*i.indices(self._len))]
         if i < 0:
             i += self._len
         if not 0 <= i < self._len:
             raise IndexError("bar index out of range")
-        return self._bars[i]
+        return self._bar(i)
 
     def __iter__(self):
-        return (self._bars[k] for k in range(self._len))
+        return (self._bar(k) for k in range(self._len))
 
 
 class Strategy:
@@ -40,10 +58,12 @@ class Strategy:
         self._broker: Any = None
         self._index: int = 0
         self._data_view: Any = None
+        self._snapshot = None
 
     @property
     def positions(self):
-        return self._broker.positions() if self._broker else []
+        positions = self._broker.positions() if self._broker else []
+        return positions if self._snapshot is None else [self._snapshot.record(p) for p in positions]
 
     @property
     def position_count(self):
@@ -55,6 +75,8 @@ class Strategy:
 
     @property
     def data(self):
+        if self._snapshot is not None:
+            return self._data_view
         if not self._bars:
             return []
         if self._data_view is None:
@@ -114,29 +136,40 @@ class Strategy:
 
 
 class _Adapter:
-    def __init__(self, strategy):
+    def __init__(self, strategy, snapshot=None):
         self._strategy = strategy
         self._index = 0
+        self._snapshot = snapshot
 
     def init(self, bars):
         self._strategy._bars = bars
+        self._strategy._snapshot = self._snapshot
+        if self._snapshot is not None:
+            self._strategy._data_view = _DataView(bars, self._snapshot)
+            self._strategy._data_view._len = len(bars)
         self._strategy.init()
 
     def next(self, bar, broker):
         self._strategy._bar = bar
         self._strategy._broker = broker
-        self._strategy._index = self._index
+        self._strategy._index = self._index if self._snapshot is None else bar.timestamp
         self._index += 1
+        if self._snapshot is not None:
+            self._strategy._data_view._len = bar.timestamp + 1
         self._strategy.next()
 
 
 class Backtest:
     """Backtest midpoint OHLC data with a full bid–ask spread in price units.
 
-    OHLCV and timestamp column names are case-insensitive.
+    In data_mode='fx' (default), OHLCV and timestamp names are case-insensitive.
     Numeric timestamp columns require timestamp_unit='s', 'ms', 'us', or 'ns'.
     Naive datetimes mean UTC; aware datetimes retain their UTC instant. All
     timestamps floor to whole Unix seconds before ordering checks.
+
+    data_mode='reference' uses exact Open/High/Low/Close names and preserves
+    the prepared pandas index, including periods, duplicates and nanoseconds.
+    Orders and sizing still use the FX API; calendar swaps require FX mode.
 
     Fills apply half the spread on each side of the midpoint. Open equity marks
     positions at their closing bid/ask, excluding future exit commission.
@@ -155,11 +188,15 @@ class Backtest:
         swap=None,
         timestamp_unit=None,
         margin=None,
+        data_mode="fx",
     ):
         if not isinstance(df, pd.DataFrame):
             raise TypeError("market data must be a pandas DataFrame")
         _rust._validate_config(cash, commission, spread, contract_size, quote_to_account)
-        self._df = df
+        self._data_mode = InputMode.parse(data_mode)
+        if self._data_mode is InputMode.REFERENCE and swap is not None:
+            raise ValueError("reference input row clocks cannot drive a swap calendar; use data_mode='fx'")
+        self._df = prepare_reference(df, cash) if self._data_mode is InputMode.REFERENCE else df
         self._strategy_class = strategy_class
         self._cash = cash
         self._commission = commission
@@ -180,8 +217,11 @@ class Backtest:
         self._stats = None
         self._report_df = None
         self._report_timestamps = None
+        self._report_snapshot = None
 
     def _bar_columns(self, df):
+        if self._data_mode is InputMode.REFERENCE:
+            return reference_columns(df)
         required = {"open", "high", "low", "close"}
         columns = {}
         for column in df.columns:
@@ -245,7 +285,7 @@ class Backtest:
         return timestamps, values
 
     def _to_bars(self, df):
-        return _rust._bars_from_columns(self._bar_columns(df))
+        return _rust._bars_from_columns(self._bar_columns(df), validation=self._data_mode.value)
 
     def _engine(self, df, columns=None):
         return _rust.Engine._from_columns(  # type: ignore
@@ -257,6 +297,7 @@ class Backtest:
             self._quote_to_account,
             swap=self._swap,
             margin=self._margin,
+            validation=self._data_mode.value,
         )
 
     def run(self):
@@ -266,13 +307,17 @@ class Backtest:
         self._stats = None
         self._report_df = None
         self._report_timestamps = None
+        self._report_snapshot = None
         report_df = self._df.copy(deep=True)
+        snapshot = ReferenceSnapshot(report_df) if self._data_mode is InputMode.REFERENCE else None
         columns = self._bar_columns(report_df)
         engine = self._engine(report_df, columns)
         strategy = self._strategy_class()
-        self._stats = engine.run(_Adapter(strategy))
+        stats = engine.run(_Adapter(strategy, snapshot))
+        self._stats = stats if snapshot is None else snapshot.result(stats)
         self._report_df = report_df
         self._report_timestamps = columns[0].copy()
+        self._report_snapshot = snapshot
         return self._stats
 
     def optimize(self, signal_fn, maximize="total_return_pct", **grid):
@@ -289,14 +334,16 @@ class Backtest:
         if not grid:
             raise ValueError("optimize needs at least one parameter range")
 
-        engine = self._engine(self._df)
+        snapshot = ReferenceSnapshot(self._df.copy(deep=True)) if self._data_mode is InputMode.REFERENCE else None
+        frame = self._df if snapshot is None else snapshot.frame
+        engine = self._engine(frame)
 
         names = list(grid)
         combos = [dict(zip(names, values)) for values in itertools.product(*grid.values())]
 
         signals = []
         for combo in combos:
-            signal = np.asarray(signal_fn(self._df, **combo), dtype=float)
+            signal = np.asarray(signal_fn(frame, **combo), dtype=float)
             if signal.ndim != 1:
                 raise ValueError(f"signal_fn must return a one-dimensional signal for {combo}")
             if len(signal) != len(self._df):
@@ -317,6 +364,8 @@ class Backtest:
             signals.append(signal.tolist())
 
         results = _rust.run_grid(engine, signals)  # type: ignore
+        if snapshot is not None:
+            results = [snapshot.result(stats) for stats in results]
 
         return sorted(
             zip(combos, results),
@@ -342,4 +391,5 @@ class Backtest:
             contract_size=self._contract_size,
             quote_to_account=self._quote_to_account,
             swap=self._swap,
+            snapshot=self._report_snapshot,
         )

@@ -30,6 +30,14 @@ functional coverage are tracked in issues
 
 ## Public API and stability
 
+Input compatibility targets backtesting.py **0.6.6**, commit
+`9c2b8e1c99f3a860883222ba8d6d5b5cac3a932d`, through the explicit
+`data_mode="reference"` option. See [reference input](REFERENCE_INPUT.md) for
+index, validation, strategy, and result behavior. CI requires the pinned
+reference package through the `test` extra. Full strategy, order, sizing, cost,
+and results compatibility remains tracked in
+[#61](https://github.com/KhizarImran/backtestingfx/issues/61).
+
 The project is pre-1.0. Public Python imports from `backtestingfx`, documented
 strategy methods/properties, result fields, and documented execution assumptions
 are the compatibility surface. Underscore-prefixed members and internal Rust
