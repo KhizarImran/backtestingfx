@@ -1,5 +1,6 @@
 use crate::broker::Broker;
 use crate::data::{self, BarColumns, DataError, InputValidation};
+use crate::execution::{ExecutionTiming, MarketFill};
 use crate::margin::{MarginConfig, MarginError};
 use crate::stats::Stats;
 use crate::strategy::Strategy;
@@ -63,6 +64,7 @@ pub struct Engine {
     pub equity_curve: Vec<f64>,
     pub(crate) swap: Option<SwapConfig>,
     input_validation: InputValidation,
+    pub(crate) execution: Option<ExecutionTiming>,
 }
 
 impl Engine {
@@ -115,24 +117,74 @@ impl Engine {
         self.equity_curve.clear();
         self.equity_curve.push(self.broker.initial_cash);
 
-        strategy.init(&self.data);
-        for bar in &self.data {
+        let start = if self.execution.is_some() {
+            self.broker.queue_market_orders();
+            strategy.init_execution(&self.data, &mut self.broker);
+            strategy.execution_warmup().saturating_add(1)
+        } else {
+            strategy.init(&self.data);
+            0
+        };
+        self.equity_curve
+            .resize(start.min(self.data.len()) + 1, self.broker.initial_cash);
+        for (index, bar) in self.data.iter().enumerate().skip(start) {
             if let Some(cursor) = &mut rollover {
                 cursor.apply_through(bar.timestamp, &mut self.broker)?;
             }
-            self.broker.begin_bar(bar)?;
+            Self::begin_step(self.execution, &self.data, &mut self.broker, index)?;
             if self.broker.is_active() {
                 strategy.next(bar, &mut self.broker);
             }
             self.equity_curve.push(self.broker.end_bar(bar)?);
         }
-        if let Some(last_bar) = self.data.last() {
-            self.broker.finalize(last_bar)?;
-            if let Some(last) = self.equity_curve.last_mut() {
-                *last = self.broker.cash;
+        Self::finish_run(
+            self.execution,
+            &self.data,
+            &mut self.broker,
+            start,
+            &mut self.equity_curve,
+        )?;
+        Ok(self.run_stats(&self.broker, &self.equity_curve))
+    }
+
+    pub(crate) fn run_stats(&self, broker: &Broker, equity: &[f64]) -> Stats {
+        if let Some(first_mark) = equity.get(1).filter(|_| self.execution.is_some()) {
+            // The reference measures return from the first published (backfilled) mark.
+            Stats::compute_with_return_base(broker, equity, *first_mark)
+        } else {
+            Stats::compute(broker, equity)
+        }
+    }
+
+    pub(crate) fn begin_step(
+        timing: Option<ExecutionTiming>,
+        data: &[Bar],
+        broker: &mut Broker,
+        index: usize,
+    ) -> Result<(), MarginError> {
+        match timing {
+            Some(timing) => timing.begin(broker, &data[index - 1], &data[index]),
+            None => broker.begin_bar(&data[index]),
+        }
+    }
+
+    pub(crate) fn finish_run(
+        timing: Option<ExecutionTiming>,
+        data: &[Bar],
+        broker: &mut Broker,
+        start: usize,
+        equity: &mut [f64],
+    ) -> Result<(), MarginError> {
+        if let Some(timing) = timing {
+            return timing.finish(broker, data, start, equity);
+        }
+        if let Some(last) = data.last() {
+            broker.finalize(last)?;
+            if let Some(mark) = equity.last_mut() {
+                *mark = broker.cash;
             }
         }
-        Ok(Stats::compute(&self.broker, &self.equity_curve))
+        Ok(())
     }
 }
 
@@ -173,6 +225,11 @@ impl Strategy for Noop {
 }
 
 impl Engine {
+    pub fn with_execution_timing(mut self, timing: ExecutionTiming) -> Self {
+        self.execution = Some(timing);
+        self
+    }
+
     pub fn with_margin(mut self, config: MarginConfig) -> Self {
         self.broker = self.broker.with_margin(config);
         self
@@ -218,6 +275,7 @@ impl Engine {
             equity_curve: Vec::new(),
             swap: None,
             input_validation: InputValidation::StrictFx,
+            execution: None,
         }
     }
 }
@@ -309,6 +367,18 @@ impl Engine {
         Ok(engine)
     }
 
+    fn _set_execution_timing(&mut self, trade_on_close: bool, finalize_trades: bool) {
+        let market_fill = if trade_on_close {
+            MarketFill::PreviousClose
+        } else {
+            MarketFill::NextOpen
+        };
+        self.execution = Some(ExecutionTiming {
+            market_fill,
+            finalize_trades,
+        });
+    }
+
     #[pyo3(name = "run")]
     pub fn run_py(&mut self, py: Python<'_>, strategy: Py<PyAny>) -> PyResult<Stats> {
         let plan = self.swap_plan()?;
@@ -317,18 +387,32 @@ impl Engine {
         self.equity_curve.push(self.broker.initial_cash);
 
         let history = PyList::new(py, self.data.iter().cloned())?;
-        strategy.bind(py).call_method1("init", (history,))?;
-
-        let broker_py = Py::new(py, self.broker.fresh())?;
+        let mut broker = self.broker.fresh();
+        if self.execution.is_some() {
+            broker.queue_market_orders();
+        }
+        let broker_py = Py::new(py, broker)?;
+        let start = if self.execution.is_some() {
+            strategy
+                .bind(py)
+                .call_method1("_init_execution", (history, broker_py.clone_ref(py)))?
+                .extract::<usize>()?
+                .max(1)
+        } else {
+            strategy.bind(py).call_method1("init", (history,))?;
+            0
+        };
+        self.equity_curve
+            .resize(start.min(self.data.len()) + 1, self.broker.initial_cash);
 
         let next_name = pyo3::intern!(py, "next");
-        for bar in &self.data {
+        for (index, bar) in self.data.iter().enumerate().skip(start) {
             let active = {
                 let mut b = broker_py.borrow_mut(py);
                 if let Some(cursor) = &mut rollover {
                     cursor.apply_through(bar.timestamp, &mut b)?;
                 }
-                b.begin_bar(bar)?;
+                Self::begin_step(self.execution, &self.data, &mut b, index)?;
                 b.is_active()
             };
             if active {
@@ -340,16 +424,16 @@ impl Engine {
             self.equity_curve.push(equity);
         }
 
-        if let Some(last_bar) = self.data.last() {
-            let mut b = broker_py.borrow_mut(py);
-            b.finalize(last_bar)?;
-            if let Some(last) = self.equity_curve.last_mut() {
-                *last = b.cash;
-            }
-        }
+        Self::finish_run(
+            self.execution,
+            &self.data,
+            &mut broker_py.borrow_mut(py),
+            start,
+            &mut self.equity_curve,
+        )?;
 
         let b = broker_py.borrow(py);
-        Ok(Stats::compute(&b, &self.equity_curve))
+        Ok(self.run_stats(&b, &self.equity_curve))
     }
 
     // ponytail: benchmark hook, runs the SMA strategy entirely in Rust via the native run() path.

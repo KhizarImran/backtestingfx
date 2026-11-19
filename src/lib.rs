@@ -2,6 +2,7 @@ pub mod broker;
 pub mod data;
 pub mod margin;
 pub mod engine;
+pub mod execution;
 pub mod optimise;
 pub mod stats;
 pub mod strategy;

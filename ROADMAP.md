@@ -18,6 +18,8 @@ priorities or delivered capabilities change.
   The complete backtesting.py-compatible facade remains tracked in
   [#61](https://github.com/KhizarImran/backtestingfx/issues/61).
 
+- Queued market execution, callback warmup, and optional finalization.
+  [#10](https://github.com/KhizarImran/backtestingfx/issues/10) · [Execution guide](README.md#queued-market-execution)
 - Optional leverage, gross margin, rejected orders, and terminal full-book liquidation:
   [#9](https://github.com/KhizarImran/backtestingfx/issues/9), [margin guide](MARGINS.md).
 - Gap-aware stop/target fills: [#8](https://github.com/KhizarImran/backtestingfx/issues/8).
@@ -38,7 +40,6 @@ priorities or delivered capabilities change.
 
 ## 1. Core adoption (P1)
 
-- Configurable market execution timing and final liquidation: [#10](https://github.com/KhizarImran/backtestingfx/issues/10).
 - Time-varying quote-to-account conversion: [#12](https://github.com/KhizarImran/backtestingfx/issues/12).
 - Pending orders and risk sizing: [#24](https://github.com/KhizarImran/backtestingfx/issues/24), [#26](https://github.com/KhizarImran/backtestingfx/issues/26).
 - Public strategy data, indicators, and parameters: [#19](https://github.com/KhizarImran/backtestingfx/issues/19), [#20](https://github.com/KhizarImran/backtestingfx/issues/20), [#21](https://github.com/KhizarImran/backtestingfx/issues/21).

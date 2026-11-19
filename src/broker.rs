@@ -6,6 +6,7 @@ use crate::swap::SwapError;
 use crate::types::{Bar, Position, SwapCharge, Trade};
 use crate::validation;
 use pyo3::prelude::*;
+use std::collections::VecDeque;
 
 struct Entry {
     is_long: bool,
@@ -14,6 +15,45 @@ struct Entry {
     timestamp: i64,
     stop_loss: Option<f64>,
     take_profit: Option<f64>,
+}
+
+enum MarketOrder {
+    Entry(Entry),
+    Close { id: u64, size: CloseSize },
+    Bracket { id: u64, kind: Bracket },
+}
+
+enum CloseSize {
+    Full,
+    Partial(f64),
+}
+
+enum Bracket {
+    Stop,
+    Target,
+}
+
+impl Bracket {
+    fn fill(&self, position: &Position, bar: &Bar) -> Option<f64> {
+        match (self, position.is_long) {
+            (Self::Stop, true) => position
+                .stop_loss
+                .filter(|level| bar.low <= *level)
+                .map(|level| bar.open.min(level)),
+            (Self::Stop, false) => position
+                .stop_loss
+                .filter(|level| bar.high >= *level)
+                .map(|level| bar.open.max(level)),
+            (Self::Target, true) => position
+                .take_profit
+                .filter(|level| bar.high >= *level)
+                .map(|level| bar.open.max(level)),
+            (Self::Target, false) => position
+                .take_profit
+                .filter(|level| bar.low <= *level)
+                .map(|level| bar.open.min(level)),
+        }
+    }
 }
 
 struct Settlement {
@@ -41,6 +81,7 @@ pub struct Broker {
     pub swap_charges: Vec<SwapCharge>,
     pub(crate) risk: RiskState,
     pub(crate) order_rejections: Vec<OrderRejection>,
+    market_orders: Option<VecDeque<MarketOrder>>,
 }
 
 // Rust-internal only, not exposed to Python
@@ -257,6 +298,7 @@ impl Broker {
             swap_charges: Vec::new(),
             risk: RiskState::Disabled,
             order_rejections: Vec::new(),
+            market_orders: None,
         }
     }
 
@@ -321,6 +363,12 @@ impl Broker {
     }
 
     fn open(&mut self, entry: Entry) -> OrderResult {
+        if let Some(orders) = &mut self.market_orders {
+            orders.push_back(MarketOrder::Entry(entry));
+            return OrderResult {
+                outcome: OrderOutcome::Queued,
+            };
+        }
         if let Some(result) = self.admit(&entry) {
             return result;
         }
@@ -361,6 +409,9 @@ impl Broker {
         price: f64,
         timestamp: i64,
     ) -> Result<(), MarginError> {
+        if self.queue_close(id, CloseSize::Full) {
+            return Ok(());
+        }
         if let Some(index) = self.positions.iter().position(|p| p.id == id) {
             let p = &self.positions[index];
             if let Err(error) = self.checked_settlement_cash(p, p.lot_size, price, self.cash) {
@@ -385,6 +436,9 @@ impl Broker {
     ) -> Result<(), MarginError> {
         if lot_size <= 0.0 {
             return Ok(()); // closing zero (or negative) lots would book PnL out of thin air
+        }
+        if self.queue_close(id, CloseSize::Partial(lot_size)) {
+            return Ok(());
         }
         let Some(index) = self.positions.iter().position(|p| p.id == id) else {
             return Ok(());
@@ -420,6 +474,16 @@ impl Broker {
         match self.positions.iter_mut().find(|p| p.id == id) {
             Some(position) => {
                 position.stop_loss = Some(stop_loss);
+                if let Some(orders) = &mut self.market_orders {
+                    orders.retain(|order| {
+                        !matches!(order,
+                        MarketOrder::Bracket { id: other, kind: Bracket::Stop } if *other == id)
+                    });
+                    orders.push_front(MarketOrder::Bracket {
+                        id,
+                        kind: Bracket::Stop,
+                    });
+                }
                 true
             }
             None => false,
@@ -427,6 +491,15 @@ impl Broker {
     }
 
     pub fn close_all(&mut self, price: f64, timestamp: i64) -> Result<(), MarginError> {
+        if let Some(orders) = &mut self.market_orders {
+            for position in &self.positions {
+                orders.push_front(MarketOrder::Close {
+                    id: position.id,
+                    size: CloseSize::Full,
+                });
+            }
+            return Ok(());
+        }
         if let Err(error) = self.checked_close_cash(price) {
             return Err(self.fail(error));
         }
@@ -618,7 +691,10 @@ impl Broker {
             return Ok(());
         };
         let count = self.positions.len();
-        self.close_all(price, timestamp)?;
+        let orders = self.market_orders.take();
+        let result = self.close_all(price, timestamp);
+        self.market_orders = orders;
+        result?;
         self.risk = RiskState::Liquidated {
             config,
             event: Liquidation {
@@ -632,6 +708,119 @@ impl Broker {
             },
         };
         Ok(())
+    }
+
+    pub(crate) fn queue_market_orders(&mut self) {
+        self.market_orders = Some(VecDeque::new());
+    }
+
+    pub(crate) fn discard_market_orders(&mut self) {
+        if let Some(orders) = &mut self.market_orders {
+            orders.clear();
+        }
+    }
+
+    fn queue_close(&mut self, id: u64, size: CloseSize) -> bool {
+        let Some(orders) = &mut self.market_orders else {
+            return false;
+        };
+        if self.positions.iter().any(|position| position.id == id) {
+            orders.push_front(MarketOrder::Close { id, size });
+        }
+        true
+    }
+
+    pub(crate) fn queue_finalization(&mut self) {
+        if let Some(orders) = &mut self.market_orders {
+            for position in self.positions.iter().rev() {
+                orders.push_front(MarketOrder::Close {
+                    id: position.id,
+                    size: CloseSize::Full,
+                });
+            }
+        }
+    }
+
+    pub(crate) fn process_market_orders(
+        &mut self,
+        bar: &Bar,
+        (price, timestamp): (f64, i64),
+    ) -> Result<(), MarginError> {
+        // Temporarily take the queue so broker operations settle fills immediately.
+        let mut orders = self.market_orders.take().unwrap_or_default();
+        let result = self.fill_market_orders(&mut orders, bar, price, timestamp);
+        self.market_orders = Some(orders);
+        result
+    }
+
+    fn fill_market_orders(
+        &mut self,
+        orders: &mut VecDeque<MarketOrder>,
+        bar: &Bar,
+        price: f64,
+        timestamp: i64,
+    ) -> Result<(), MarginError> {
+        self.enforce_margin(bar.open, bar.timestamp)?;
+        if !self.is_active() {
+            orders.clear();
+            return Ok(());
+        }
+        loop {
+            let mut new_brackets = false;
+            // Orders created by a fill join the next pass over this same candle.
+            for order in std::mem::take(orders) {
+                match order {
+                    MarketOrder::Entry(mut entry) => {
+                        entry.price = price;
+                        entry.timestamp = timestamp;
+                        let (has_stop, has_target) =
+                            (entry.stop_loss.is_some(), entry.take_profit.is_some());
+                        if let OrderOutcome::Filled(id) = self.open(entry).outcome {
+                            if has_stop {
+                                orders.push_front(MarketOrder::Bracket {
+                                    id,
+                                    kind: Bracket::Stop,
+                                });
+                            }
+                            if has_target {
+                                orders.push_back(MarketOrder::Bracket {
+                                    id,
+                                    kind: Bracket::Target,
+                                });
+                            }
+                            new_brackets |= has_stop || has_target;
+                        }
+                    }
+                    MarketOrder::Close {
+                        id,
+                        size: CloseSize::Full,
+                    } => {
+                        self.close_position(id, price, timestamp)?;
+                    }
+                    MarketOrder::Close {
+                        id,
+                        size: CloseSize::Partial(lots),
+                    } => {
+                        self.close_partial(id, lots, price, timestamp)?;
+                    }
+                    MarketOrder::Bracket { id, kind } => {
+                        if let Some(position) =
+                            self.positions.iter().find(|position| position.id == id)
+                        {
+                            if let Some(exit) = kind.fill(position, bar) {
+                                self.close_position(id, exit, bar.timestamp)?;
+                            } else {
+                                orders.push_back(MarketOrder::Bracket { id, kind });
+                            }
+                        }
+                    }
+                }
+            }
+            if !new_brackets {
+                break;
+            }
+        }
+        self.enforce_margin(bar.close, bar.timestamp)
     }
 
     #[inline]

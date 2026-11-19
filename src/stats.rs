@@ -1,6 +1,6 @@
 use crate::broker::Broker;
 use crate::margin::{Liquidation, MarginConfig, OrderRejection, RiskState};
-use crate::types::{SwapCharge, Trade};
+use crate::types::{Position, SwapCharge, Trade};
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -9,6 +9,10 @@ pub struct Stats {
     pub initial_cash: f64,
     #[pyo3(get)]
     pub final_cash: f64,
+    #[pyo3(get)]
+    pub final_equity: f64,
+    #[pyo3(get)]
+    pub open_positions: Vec<Position>,
     #[pyo3(get)]
     pub total_return_pct: f64,
     #[pyo3(get)]
@@ -100,10 +104,19 @@ impl Stats {
 
 impl Stats {
     pub fn compute(broker: &Broker, equity_curve: &[f64]) -> Self {
+        Self::compute_with_return_base(broker, equity_curve, broker.initial_cash)
+    }
+
+    pub(crate) fn compute_with_return_base(
+        broker: &Broker,
+        equity_curve: &[f64],
+        return_base: f64,
+    ) -> Self {
         let num_trades = broker.trade_history.len();
         let initial_cash = broker.initial_cash;
         let final_cash = broker.cash;
-        let total_return_pct = (final_cash - initial_cash) / initial_cash * 100.0;
+        let final_equity = equity_curve.last().copied().unwrap_or(final_cash);
+        let total_return_pct = (final_equity - return_base) / return_base * 100.0;
 
         let num_wins = broker.trade_history.iter().filter(|t| t.pnl > 0.0).count();
         let win_rate_pct = if num_trades > 0 {
@@ -152,6 +165,8 @@ impl Stats {
         Stats {
             initial_cash,
             final_cash,
+            final_equity,
+            open_positions: broker.positions.clone(),
             total_return_pct,
             num_trades,
             num_wins,

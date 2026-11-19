@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- Opt-in queued market execution through `trade_on_close` and `finalize_trades`.
+  Python strategies, native strategies, and signal runs share next-open or
+  previous-close fills and final-bar processing. Results expose open positions
+  and marked final equity. The queued timeline follows backtesting.py 0.6.6
+  with FX sizing and costs. See [queued market execution](README.md#queued-market-execution).
 - Optional `data_mode="reference"` for backtesting.py 0.6.6 DataFrame input:
   periods, duplicate labels, exact timestamps, aligned features, indexed equity
   and event views, and reports that retain source labels. The default FX input

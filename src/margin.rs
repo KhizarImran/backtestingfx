@@ -120,6 +120,7 @@ impl OrderRejection {
 #[derive(Debug, Clone)]
 pub enum OrderOutcome {
     Filled(u64),
+    Queued,
     Rejected(OrderRejection),
 }
 
@@ -137,17 +138,22 @@ impl OrderResult {
     }
 
     #[getter]
+    fn pending(&self) -> bool {
+        matches!(self.outcome, OrderOutcome::Queued)
+    }
+
+    #[getter]
     fn position_id(&self) -> Option<u64> {
         match &self.outcome {
             OrderOutcome::Filled(id) => Some(*id),
-            OrderOutcome::Rejected(_) => None,
+            OrderOutcome::Queued | OrderOutcome::Rejected(_) => None,
         }
     }
 
     #[getter]
     fn reason(&self) -> Option<&'static str> {
         match &self.outcome {
-            OrderOutcome::Filled(_) => None,
+            OrderOutcome::Filled(_) | OrderOutcome::Queued => None,
             OrderOutcome::Rejected(rejection) => Some(rejection.reason.as_str()),
         }
     }

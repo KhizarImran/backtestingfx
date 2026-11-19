@@ -31,11 +31,16 @@ fn simulate(
     equity_curve.push(broker.initial_cash);
     let mut rollover = plan.map(SwapPlan::cursor);
 
-    for (bar, &want) in engine.data.iter().zip(target) {
+    let start = usize::from(engine.execution.is_some());
+    if engine.execution.is_some() {
+        broker.queue_market_orders();
+        equity_curve.resize(start.min(engine.data.len()) + 1, broker.initial_cash);
+    }
+    for (index, (bar, &want)) in engine.data.iter().zip(target).enumerate().skip(start) {
         if let Some(cursor) = &mut rollover {
             cursor.apply_through(bar.timestamp, &mut broker)?;
         }
-        broker.begin_bar(bar)?;
+        Engine::begin_step(engine.execution, &engine.data, &mut broker, index)?;
 
         // signed exposure: longs count positive, shorts negative
         let have: f64 = broker
@@ -59,15 +64,15 @@ fn simulate(
         equity_curve.push(broker.end_bar(bar)?);
     }
 
-    // match Engine::run: liquidate at the last bar and let that land in the curve
-    if let Some(last_bar) = engine.data.last() {
-        broker.finalize(last_bar)?;
-        if let Some(last) = equity_curve.last_mut() {
-            *last = broker.cash;
-        }
-    }
+    Engine::finish_run(
+        engine.execution,
+        &engine.data,
+        &mut broker,
+        start,
+        &mut equity_curve,
+    )?;
 
-    Ok(Stats::compute(&broker, &equity_curve))
+    Ok(engine.run_stats(&broker, &equity_curve))
 }
 
 /// Run one simulation per signal array, in parallel, and return the Stats in order.
@@ -162,6 +167,56 @@ mod tests {
             assert_eq!(native.order_rejections.len(), signal.order_rejections.len());
             assert_eq!(native.num_trades, signal.num_trades);
             assert_eq!(native.final_cash, signal.final_cash);
+        }
+    }
+
+    #[test]
+    fn queued_native_and_signal_runs_share_fill_and_finalization() {
+        use crate::execution::{ExecutionTiming, MarketFill};
+        use crate::strategy::Strategy;
+
+        struct Hold;
+        impl Strategy for Hold {
+            fn next(&mut self, bar: &Bar, broker: &mut Broker) {
+                if bar.timestamp == 1 {
+                    broker.buy(bar.close, 1.0, bar.timestamp, None, None);
+                }
+            }
+        }
+
+        for (market_fill, entry, exit) in [
+            (MarketFill::NextOpen, (2, 16.0), (3, 20.0)),
+            (MarketFill::PreviousClose, (1, 13.0), (2, 17.0)),
+        ] {
+            for finalize_trades in [false, true] {
+                let data = [(10.0, 11.0), (12.0, 13.0), (16.0, 17.0), (20.0, 21.0)]
+                    .into_iter()
+                    .zip(0..)
+                    .map(|((open, close), time)| Bar::new(time, open, close, open, close, 0.0))
+                    .collect();
+                let mut engine = Engine::new(data, 100.0, 0.0, 0.0, 1.0, 1.0)
+                    .with_execution_timing(ExecutionTiming {
+                        market_fill,
+                        finalize_trades,
+                    });
+                let signal = simulate(&engine, &[0.0, 1.0, 1.0, 1.0], None).unwrap();
+                for _ in 0..2 {
+                    let native = engine.run(&mut Hold).unwrap();
+                    assert_eq!(native.equity_curve, signal.equity_curve);
+                    assert_eq!(native.num_trades, signal.num_trades);
+                    assert_eq!(native.open_positions.len(), signal.open_positions.len());
+                    if finalize_trades {
+                        let trade = &native.trades[0];
+                        assert_eq!((trade.entry_timestamp, trade.entry_price), entry);
+                        assert_eq!((trade.exit_timestamp, trade.exit_price), exit);
+                    } else {
+                        let position = &native.open_positions[0];
+                        assert_eq!((position.entry_timestamp, position.entry_price), entry);
+                        assert_eq!(native.final_cash, 100.0);
+                        assert_eq!(native.final_equity, 121.0 - entry.1);
+                    }
+                }
+            }
         }
     }
 

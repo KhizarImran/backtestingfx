@@ -266,7 +266,7 @@ def render_report(
 
     metric_values = (
         ("Total return", number(stats.total_return_pct, "%")),
-        ("Final equity", number(stats.final_cash, money=True)),
+        ("Final equity", number(stats.final_equity, money=True)),
         ("Max drawdown", number(stats.max_drawdown_pct, "%")),
         ("Sharpe", number(stats.sharpe_ratio)),
         ("Trades", str(stats.num_trades)),

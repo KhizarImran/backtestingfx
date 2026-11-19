@@ -253,6 +253,45 @@ Backtest(
 )
 ```
 
+### Queued market execution
+
+Pass either `trade_on_close` or `finalize_trades` to use the queued market
+timeline. Both flags default to `False` on that timeline. Omit both flags to
+execute FX orders immediately at the current close and liquidate at the last close.
+
+```python
+bt = Backtest(data, MyStrategy, data_mode="reference",
+              trade_on_close=False, finalize_trades=False)
+result = bt.run()
+print(result.final_equity, result.open_positions)
+```
+
+- The broker processes queued orders before `next()`. Regular market entries
+  and requested position closes fill at the current open, or at the previous
+  close and previous bar when `trade_on_close=True`. A queued buy or sell
+  returns `OrderResult.pending=True`. Check positions and rejections after the
+  broker processes the order.
+- The first callback is at row `1 + execution_warmup()`. Override
+  `Strategy.execution_warmup()` to return the number of warmup bars. The full
+  input is visible in `init()`, and each `next()` sees data through its bar.
+- Protective stops and targets use the processing bar, including for new
+  entries. If both levels are hit, the stop takes precedence. A gap through a
+  level fills at the opening price.
+- With `finalize_trades=False`, the result keeps open positions and marks
+  final equity at the last close. The trade list contains realized trades.
+  With `finalize_trades=True`, the broker queues closes for existing positions
+  and processes the last bar again. A market entry submitted by the final
+  callback can still open a position during that pass.
+- `final_cash` is the cash balance. `final_equity` includes open PnL.
+  Queued runs calculate return from the first published equity mark, with
+  skipped bars backfilled from that mark.
+
+These flags change execution timing. Orders still use FX lots, costs, and
+margin settings. `data_mode="reference"` also preserves source labels in the
+result, including entry and exit dates. Signal optimization uses the same
+queued timing and begins reading the signal at row 1.
+[Reference input guide](REFERENCE_INPUT.md)
+
 ### Numeric input validation
 
 `Backtest`, `Broker`, and `Engine` constructors reject invalid numeric settings

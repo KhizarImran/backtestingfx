@@ -27,10 +27,11 @@ stats = bt.run()
 print(stats.equity)              # Series with the prepared RangeIndex
 ```
 
-This option covers input and index identity. The strategy still uses the
-existing FX order API, lot sizing, costs, callback timing, and final liquidation.
-It is not a drop-in replacement for backtesting.py. The compatible facade is
-tracked in [#61](https://github.com/KhizarImran/backtestingfx/issues/61).
+This option covers input and index identity. Strategies use the FX order API,
+lot sizing, and costs. To opt in to the reference market timeline, also pass
+`trade_on_close` or `finalize_trades`. The full facade is tracked in
+[#61](https://github.com/KhizarImran/backtestingfx/issues/61).
+[Queued market execution](README.md#queued-market-execution)
 
 ## Input policy
 
@@ -106,9 +107,8 @@ Install `.[report,test]` to include the pinned reference and reporting packages.
 CI installs both extras and runs `tests/test_reference_input.py` without skipping
 the reference dependency. Fixtures cover periods, duplicate labels, subsecond
 and DST timestamps, validation, sorting, features, trades, equity, optimization,
-margin events, and report snapshots. Trading comparisons align fills manually
-while [#10](https://github.com/KhizarImran/backtestingfx/issues/10) adds configurable
-order timing.
+margin events, and report snapshots. `tests/test_execution_timing.py` compares
+queued fills, callback timing, finalization, and equity with the pinned reference.
 
 The initial 12 input tests failed on the previous main because `data_mode` was
 unsupported. After implementation, all 15 input tests, 107 installed-package
