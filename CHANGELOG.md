@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Added
 - Reference strategy data exposes case-sensitive OHLCV NumPy views, pandas
   accessors, and pip size. Each callback sees only its visible prefix.
