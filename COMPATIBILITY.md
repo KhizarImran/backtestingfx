@@ -17,9 +17,9 @@ HTML reporting additionally requires Plotly >=5 through the `report` extra.
 These wheel targets describe the configured release workflow, not a guarantee
 that every Python version has a published wheel or has passed functional tests.
 The extension does not currently use abi3, so wheel compatibility depends on
-the interpreter and platform tags. Linux/macOS builds discover interpreters;
-Windows explicitly selects Python 3.13. Check the artifacts for the release
-and your interpreter before relying on wheel availability.
+the interpreter and platform tags. The wheel jobs discover available
+interpreters. Windows also builds Python 3.10 explicitly. Check the artifacts
+for your interpreter before relying on wheel availability.
 
 If pip falls back to a source build, install a current stable Rust toolchain
 and your platform's compiler/linker, then retry installation. Contributor
