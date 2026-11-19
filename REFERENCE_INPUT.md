@@ -62,12 +62,25 @@ Broker validation still applies when a strategy trades.
 
 ## Strategy and result labels
 
-During `init()`, `self.data.index` and `self.data.df` expose the full prepared
-frame. During `next()`, they expose the prefix through the current row. Custom
-columns remain aligned after sorting. Treat the frame and index as read-only.
-`self.index` remains the zero-based row position. The array and indicator APIs
-are tracked separately in [#19](https://github.com/KhizarImran/backtestingfx/issues/19)
-and [#20](https://github.com/KhizarImran/backtestingfx/issues/20).
+During `init()`, `self.data` exposes the full prepared history. During
+`next()`, it exposes the prefix through the current row. `self.index` is the
+zero-based row position.
+
+- `self.data.Close` and `self.data["Close"]` return the same NumPy view for
+  the current callback. The five names are case-sensitive and use the input
+  column dtypes. Numeric indexes and slices on `self.data` still return bars.
+- `float(self.data.Close)` and `bool(self.data.Close)` use the last visible
+  close. `self.data.pip` uses the median number of decimal places in the full
+  close column, following backtesting.py 0.6.6.
+- `self.data.Close.s` gives a named pandas Series. As in the reference,
+  converting a sliced array to pandas uses the first index labels for its
+  length. Slice `.s` with `.iloc` to keep the labels from a specific window.
+- `self.data.index` and `self.data.df` retain source labels, and custom
+  columns stay aligned in `.df`. Treat the views as read-only.
+
+Indicator registration and named custom-column arrays are tracked in
+[#20](https://github.com/KhizarImran/backtestingfx/issues/20) and
+[#22](https://github.com/KhizarImran/backtestingfx/issues/22).
 
 Each run owns its frame and index snapshot. Strategy bar `timestamp` values and
 position `entry_time` values use source labels. Results retain native numeric

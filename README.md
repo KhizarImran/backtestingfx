@@ -130,6 +130,11 @@ class MyStrategy(Strategy):
 | `self.close_partial(id, lot_size)` | Close part of a position, leaving the rest open |
 | `self.update_sl(id, stop_loss)` | Move a position's stop loss (returns `False` if the id is gone) |
 
+With `data_mode="reference"`, access visible OHLCV columns as NumPy arrays,
+for example `self.data.Close` or `self.data["Close"]`. The arrays expose
+`.s` for pandas conversion, and `self.data.pip` gives the reference price
+increment. [Reference strategy data](REFERENCE_INPUT.md#strategy-and-result-labels)
+
 ### Position inspection
 
 Use `self.has_positions` to check whether any positions are open, or

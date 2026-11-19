@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Reference strategy data exposes case-sensitive OHLCV NumPy views, pandas
+  accessors, and pip size. Each callback sees only its visible prefix.
 - Opt-in queued market execution through `trade_on_close` and `finalize_trades`.
   Python strategies, native strategies, and signal runs share next-open or
   previous-close fills and final-bar processing. Results expose open positions
