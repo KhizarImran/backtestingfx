@@ -1,4 +1,6 @@
 import itertools
+import operator
+import warnings
 from typing import Any
 
 from backtestingfx import _backtestingfx as _rust  # type: ignore
@@ -59,6 +61,7 @@ class Strategy:
         self._index: int = 0
         self._data_view: Any = None
         self._snapshot = None
+        self._queued_execution = False
 
     @property
     def positions(self):
@@ -75,7 +78,7 @@ class Strategy:
 
     @property
     def data(self):
-        if self._snapshot is not None:
+        if self._snapshot is not None or self._queued_execution:
             return self._data_view
         if not self._bars:
             return []
@@ -109,6 +112,10 @@ class Strategy:
 
     def next(self):
         pass
+
+    def execution_warmup(self):
+        """Number of additional bars to skip after bar zero in queued execution."""
+        return 0
 
     def buy(self, lot_size, stop_loss=None, take_profit=None):
         return self._broker.buy(
@@ -144,18 +151,31 @@ class _Adapter:
     def init(self, bars):
         self._strategy._bars = bars
         self._strategy._snapshot = self._snapshot
-        if self._snapshot is not None:
+        if self._snapshot is not None or self._strategy._queued_execution:
             self._strategy._data_view = _DataView(bars, self._snapshot)
             self._strategy._data_view._len = len(bars)
         self._strategy.init()
+
+    def _init_execution(self, bars, broker):
+        self._strategy._queued_execution = True
+        self._strategy._broker = broker
+        if bars:
+            self._strategy._bar = bars[-1]
+            self._strategy._index = len(bars) - 1
+        self.init(bars)
+        warmup = operator.index(self._strategy.execution_warmup())
+        if warmup < 0:
+            raise ValueError("execution_warmup() must return a nonnegative integer")
+        self._index = min(warmup + 1, max(len(bars), 1))
+        return self._index
 
     def next(self, bar, broker):
         self._strategy._bar = bar
         self._strategy._broker = broker
         self._strategy._index = self._index if self._snapshot is None else bar.timestamp
         self._index += 1
-        if self._snapshot is not None:
-            self._strategy._data_view._len = bar.timestamp + 1
+        if self._snapshot is not None or self._strategy._queued_execution:
+            self._strategy._data_view._len = self._strategy._index + 1
         self._strategy.next()
 
 
@@ -170,6 +190,9 @@ class Backtest:
     data_mode='reference' uses exact Open/High/Low/Close names and preserves
     the prepared pandas index, including periods, duplicates and nanoseconds.
     Orders and sizing still use the FX API; calendar swaps require FX mode.
+
+    Passing trade_on_close or finalize_trades enables queued market orders
+    and a first callback after bar zero. Both flags default to False in that mode.
 
     Fills apply half the spread on each side of the midpoint. Open equity marks
     positions at their closing bid/ask, excluding future exit commission.
@@ -189,11 +212,20 @@ class Backtest:
         timestamp_unit=None,
         margin=None,
         data_mode="fx",
+        trade_on_close=None,
+        finalize_trades=None,
     ):
         if not isinstance(df, pd.DataFrame):
             raise TypeError("market data must be a pandas DataFrame")
         _rust._validate_config(cash, commission, spread, contract_size, quote_to_account)
         self._data_mode = InputMode.parse(data_mode)
+        for name, flag in (("trade_on_close", trade_on_close), ("finalize_trades", finalize_trades)):
+            if flag is not None and not isinstance(flag, bool):
+                raise TypeError(f"{name} must be a bool or None")
+        self._execution_timing = (
+            None if trade_on_close is None and finalize_trades is None
+            else (bool(trade_on_close), bool(finalize_trades))
+        )
         if self._data_mode is InputMode.REFERENCE and swap is not None:
             raise ValueError("reference input row clocks cannot drive a swap calendar; use data_mode='fx'")
         self._df = prepare_reference(df, cash) if self._data_mode is InputMode.REFERENCE else df
@@ -288,7 +320,7 @@ class Backtest:
         return _rust._bars_from_columns(self._bar_columns(df), validation=self._data_mode.value)
 
     def _engine(self, df, columns=None):
-        return _rust.Engine._from_columns(  # type: ignore
+        engine = _rust.Engine._from_columns(  # type: ignore
             self._bar_columns(df) if columns is None else columns,
             self._cash,
             self._commission,
@@ -299,6 +331,9 @@ class Backtest:
             margin=self._margin,
             validation=self._data_mode.value,
         )
+        if self._execution_timing is not None:
+            engine._set_execution_timing(*self._execution_timing)
+        return engine
 
     def run(self):
         if self._strategy_class is None:
@@ -314,6 +349,15 @@ class Backtest:
         engine = self._engine(report_df, columns)
         strategy = self._strategy_class()
         stats = engine.run(_Adapter(strategy, snapshot))
+        if self._execution_timing is not None:
+            if strategy._data_view is not None:
+                strategy._data_view._len = len(report_df)
+            if not self._execution_timing[1] and stats.open_positions:
+                warnings.warn(
+                    "Some trades remain open at the end of backtest. "
+                    "Use finalize_trades=True to queue their closure.",
+                    UserWarning, stacklevel=2,
+                )
         self._stats = stats if snapshot is None else snapshot.result(stats)
         self._report_df = report_df
         self._report_timestamps = columns[0].copy()

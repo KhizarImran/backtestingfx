@@ -141,6 +141,10 @@ class IndexedResult:
         return [self._snapshot.record(trade) for trade in self._native.trades]
 
     @property
+    def open_positions(self):
+        return [self._snapshot.record(position) for position in self._native.open_positions]
+
+    @property
     def order_rejections(self):
         return [self._snapshot.record(record) for record in self._native.order_rejections]
 
