@@ -7,7 +7,9 @@ from backtestingfx import _backtestingfx as _rust  # type: ignore
 import numpy as np
 import pandas as pd
 from backtestingfx._timestamps import UNITS, index_seconds, timestamp_value
-from backtestingfx._input import InputMode, ReferenceSnapshot, prepare_reference, reference_columns
+from backtestingfx._input import (
+    REFERENCE_OHLCV, InputMode, ReferenceSnapshot, prepare_reference, reference_columns,
+)
 
 
 class _DataView:
@@ -33,6 +35,9 @@ class _DataView:
             raise AttributeError("this data view has no source frame")
         return self._snapshot.frame.iloc[:self._len]
 
+    def _set_length(self, length):
+        self._len = length
+
     def _bar(self, offset):
         bar = self._bars[offset]
         return bar if self._snapshot is None else self._snapshot.record(bar)
@@ -51,6 +56,79 @@ class _DataView:
 
     def __iter__(self):
         return (self._bar(k) for k in range(self._len))
+
+
+class _StrategyColumn(np.ndarray):
+    def __new__(cls, series, index):
+        column = np.asarray(series).view(cls)
+        column.name = series.name
+        column._index = index
+        return column
+
+    def __array_finalize__(self, source):
+        self.name = getattr(source, "name", None)
+        self._index = getattr(source, "_index", None)
+
+    def __bool__(self):
+        return bool(self[-1]) if self.ndim and self.shape[0] else super().__bool__()
+
+    def __float__(self):
+        return float(self[-1]) if self.ndim and self.shape[0] else super().__float__()
+
+    @property
+    def s(self):
+        values = np.atleast_2d(np.asarray(self))
+        return pd.Series(values[0], index=self._index[:values.shape[1]], name=self.name)
+
+    @property
+    def df(self):
+        values = np.atleast_2d(np.asarray(self))
+        return pd.DataFrame(
+            values.T, index=self._index[:values.shape[1]], columns=[self.name] * len(values),
+        )
+
+
+class _ReferenceDataView(_DataView):
+    __slots__ = ("_columns", "_visible", "_pip")
+
+    def __init__(self, bars, snapshot):
+        super().__init__(bars, snapshot)
+        self._columns = {}
+        self._visible = {}
+        self._pip = None
+
+    def _set_length(self, length):
+        super()._set_length(length)
+        self._visible.clear()
+
+    def _column(self, name):
+        if name not in REFERENCE_OHLCV:
+            raise KeyError(name)
+        if name not in self._columns:
+            self._columns[name] = _StrategyColumn(
+                self._snapshot.frame[name], self._snapshot.index,
+            )
+        return self._columns[name]
+
+    def __getitem__(self, item):
+        if not isinstance(item, str):
+            return super().__getitem__(item)
+        if item not in self._visible:
+            self._visible[item] = self._column(item)[:self._len]
+        return self._visible[item]
+
+    def __getattr__(self, name):
+        if name in REFERENCE_OHLCV:
+            return self[name]
+        raise AttributeError(f"Column {name!r} not in data")
+
+    @property
+    def pip(self):
+        if self._pip is None:
+            prices = np.asarray(self._column("Close")).astype(str)
+            decimals = [len(price.partition(".")[2]) for price in prices]
+            self._pip = float(10 ** -np.median(decimals))
+        return self._pip
 
 
 class Strategy:
@@ -151,9 +229,12 @@ class _Adapter:
     def init(self, bars):
         self._strategy._bars = bars
         self._strategy._snapshot = self._snapshot
-        if self._snapshot is not None or self._strategy._queued_execution:
-            self._strategy._data_view = _DataView(bars, self._snapshot)
-            self._strategy._data_view._len = len(bars)
+        if self._snapshot is not None:
+            self._strategy._data_view = _ReferenceDataView(bars, self._snapshot)
+        elif self._strategy._queued_execution:
+            self._strategy._data_view = _DataView(bars)
+        if self._strategy._data_view is not None:
+            self._strategy._data_view._set_length(len(bars))
         self._strategy.init()
 
     def _init_execution(self, bars, broker):
@@ -175,7 +256,7 @@ class _Adapter:
         self._strategy._index = self._index if self._snapshot is None else bar.timestamp
         self._index += 1
         if self._snapshot is not None or self._strategy._queued_execution:
-            self._strategy._data_view._len = self._strategy._index + 1
+            self._strategy._data_view._set_length(self._strategy._index + 1)
         self._strategy.next()
 
 
@@ -349,15 +430,14 @@ class Backtest:
         engine = self._engine(report_df, columns)
         strategy = self._strategy_class()
         stats = engine.run(_Adapter(strategy, snapshot))
-        if self._execution_timing is not None:
-            if strategy._data_view is not None:
-                strategy._data_view._len = len(report_df)
-            if not self._execution_timing[1] and stats.open_positions:
-                warnings.warn(
-                    "Some trades remain open at the end of backtest. "
-                    "Use finalize_trades=True to queue their closure.",
-                    UserWarning, stacklevel=2,
-                )
+        if snapshot is not None or self._execution_timing is not None:
+            strategy._data_view._set_length(len(report_df))
+        if self._execution_timing is not None and not self._execution_timing[1] and stats.open_positions:
+            warnings.warn(
+                "Some trades remain open at the end of backtest. "
+                "Use finalize_trades=True to queue their closure.",
+                UserWarning, stacklevel=2,
+            )
         self._stats = stats if snapshot is None else snapshot.result(stats)
         self._report_df = report_df
         self._report_timestamps = columns[0].copy()

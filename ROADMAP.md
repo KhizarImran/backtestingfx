@@ -18,6 +18,8 @@ priorities or delivered capabilities change.
   The complete backtesting.py-compatible facade remains tracked in
   [#61](https://github.com/KhizarImran/backtestingfx/issues/61).
 
+- Reference strategy OHLCV arrays, pandas accessors, and pip size.
+  [#19](https://github.com/KhizarImran/backtestingfx/issues/19)
 - Queued market execution, callback warmup, and optional finalization.
   [#10](https://github.com/KhizarImran/backtestingfx/issues/10) · [Execution guide](README.md#queued-market-execution)
 - Optional leverage, gross margin, rejected orders, and terminal full-book liquidation:
@@ -42,7 +44,7 @@ priorities or delivered capabilities change.
 
 - Time-varying quote-to-account conversion: [#12](https://github.com/KhizarImran/backtestingfx/issues/12).
 - Pending orders and risk sizing: [#24](https://github.com/KhizarImran/backtestingfx/issues/24), [#26](https://github.com/KhizarImran/backtestingfx/issues/26).
-- Public strategy data, indicators, and parameters: [#19](https://github.com/KhizarImran/backtestingfx/issues/19), [#20](https://github.com/KhizarImran/backtestingfx/issues/20), [#21](https://github.com/KhizarImran/backtestingfx/issues/21).
+- Strategy indicators, parameters, and named custom-column arrays. [#20](https://github.com/KhizarImran/backtestingfx/issues/20) · [#21](https://github.com/KhizarImran/backtestingfx/issues/21) · [#22](https://github.com/KhizarImran/backtestingfx/issues/22)
 - Result exports and accounting tests: [#32](https://github.com/KhizarImran/backtestingfx/issues/32), [#37](https://github.com/KhizarImran/backtestingfx/issues/37).
 - Wheel coverage, platform CI, and API documentation: [#35](https://github.com/KhizarImran/backtestingfx/issues/35), [#36](https://github.com/KhizarImran/backtestingfx/issues/36), [#40](https://github.com/KhizarImran/backtestingfx/issues/40).
 

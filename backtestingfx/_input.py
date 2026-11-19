@@ -10,6 +10,9 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
 
+REFERENCE_OHLCV = ("Open", "High", "Low", "Close", "Volume")
+
+
 class InputMode(Enum):
     FX = "fx"
     REFERENCE = "reference"
@@ -38,9 +41,9 @@ def prepare_reference(data, cash):
         data["Volume"] = np.nan
     if len(data) == 0:
         raise ValueError("OHLC `data` is empty")
-    if len(data.columns.intersection({"Open", "High", "Low", "Close", "Volume"})) != 5:
+    if len(data.columns.intersection(REFERENCE_OHLCV)) != len(REFERENCE_OHLCV):
         raise ValueError("reference data must contain 'Open', 'High', 'Low', and 'Close' columns")
-    if data[["Open", "High", "Low", "Close"]].isnull().to_numpy().any():
+    if data[list(REFERENCE_OHLCV[:-1])].isnull().to_numpy().any():
         raise ValueError("Some OHLC values are missing (NaN)")
     if np.any(data["Close"] > cash):
         warnings.warn("Some prices are larger than initial cash value. Fractional asset trading is not enabled.",
@@ -56,7 +59,7 @@ def prepare_reference(data, cash):
 
 def reference_columns(frame):
     values = [np.require(frame[name].to_numpy(), dtype=np.float64, requirements=["C", "A"])
-              for name in ("Open", "High", "Low", "Close", "Volume")]
+              for name in REFERENCE_OHLCV]
     return np.arange(len(frame), dtype=np.int64), values
 
 
