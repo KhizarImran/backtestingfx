@@ -96,6 +96,13 @@ A source build requires Rust and a native compiler. Use `".[report]"` instead
 of `.` to include HTML reporting. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 development setup.
 
+## backtesting.py compatibility
+
+Use the opt-in `backtestingfx.compat` namespace to run a funded, whole-unit
+market strategy on the Rust engine. The compatibility target is backtesting.py
+0.6.6. See the [API reference and coverage matrix](COMPATIBILITY.md#strategy-compatibility)
+for supported methods and the issues tracking the rest of the API.
+
 ## Writing a Strategy
 
 Inherit from `Strategy` and implement `next()`. It is called once per bar.

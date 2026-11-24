@@ -15,8 +15,10 @@ priorities or delivered capabilities change.
 
 - Reference DataFrame input and exact index labels through `data_mode="reference"`:
   [#66](https://github.com/KhizarImran/backtestingfx/issues/66), [input guide](REFERENCE_INPUT.md).
-  The complete backtesting.py-compatible facade remains tracked in
-  [#61](https://github.com/KhizarImran/backtestingfx/issues/61).
+- Opt-in `backtestingfx.compat` API for funded whole-unit market orders,
+  indicator crossover strategies, and parameter grids.
+  [#61](https://github.com/KhizarImran/backtestingfx/issues/61) ·
+  [Compatibility matrix](COMPATIBILITY.md#strategy-compatibility)
 
 - Reference strategy OHLCV arrays, pandas accessors, and pip size.
   [#19](https://github.com/KhizarImran/backtestingfx/issues/19)

@@ -30,14 +30,6 @@ functional coverage are tracked in issues
 
 ## Public API and stability
 
-Input compatibility targets backtesting.py **0.6.6**, commit
-`9c2b8e1c99f3a860883222ba8d6d5b5cac3a932d`, through the explicit
-`data_mode="reference"` option. See [reference input](REFERENCE_INPUT.md) for
-index, validation, strategy, and result behavior. CI requires the pinned
-reference package through the `test` extra. Full strategy, order, sizing, cost,
-and results compatibility remains tracked in
-[#61](https://github.com/KhizarImran/backtestingfx/issues/61).
-
 The project is pre-1.0. Public Python imports from `backtestingfx`, documented
 strategy methods/properties, result fields, and documented execution assumptions
 are the compatibility surface. Underscore-prefixed members and internal Rust
@@ -60,6 +52,62 @@ explicit explanation and migration notes.
 Changes to the minimum Python version or supported platform targets must be
 announced in the changelog and this policy. Before 1.0 they belong in a minor
 release; after 1.0 they require a major release.
+
+## Strategy compatibility
+
+The reference is backtesting.py **0.6.6**, commit
+`9c2b8e1c99f3a860883222ba8d6d5b5cac3a932d`. Install the `test` extra to run
+the comparisons against the pinned package.
+
+For a strategy within the coverage below, change the imports to
+`from backtestingfx.compat import Backtest, Strategy` and keep the strategy
+class body. You can keep using helpers from your installed `backtesting.lib`,
+such as `crossover`. The `backtestingfx.compat` module requires no
+backtesting.py installation of its own.
+
+### API reference
+
+```python
+from backtestingfx.compat import Backtest, Strategy
+
+backtest = Backtest(data, MyStrategy, cash=10_000, finalize_trades=True)
+result = backtest.run(window=20)
+best = backtest.optimize(window=[10, 20], maximize="Equity Final [$]")
+```
+
+`MyStrategy` subclasses `Strategy`. Declare each run or grid parameter as
+a class attribute. Call `self.I(fn, ...)` in `init()` and assign the
+returned array to an instance attribute so `next()` sees only data through
+the current bar. Non-scatter indicator warmup delays the first callback.
+
+Use `buy(size=...)` and `sell(size=...)` with positive whole units.
+Market entries and explicit closes fill on the next open. Use
+`self.position.close()` or `trade.close(portion=...)` to queue exits.
+`Order` exposes the submitted signed size and direction. `Position`
+exposes current aggregate size and unrealized profit or loss. Each
+`Trade` in `self.trades` exposes size, entry price, bar, time, and
+unrealized profit or loss.
+
+`run()` returns a pandas Series with `Equity Final [$]`, `Return [%]`,
+`# Trades`, `SQN`, and `_strategy`. `optimize()` runs a parameter grid
+and returns the best Series for one of those four numeric objectives.
+
+### Coverage matrix
+
+| Area | Implemented | Follow-up |
+| --- | --- | --- |
+| Classes and imports | `backtestingfx.compat.Backtest`, `Strategy`, `Order`, `Position`, `Trade` | [#21](https://github.com/KhizarImran/backtestingfx/issues/21), [#25](https://github.com/KhizarImran/backtestingfx/issues/25) |
+| Data | OHLCV arrays and exact prepared pandas index | [Reference input](REFERENCE_INPUT.md), [#22](https://github.com/KhizarImran/backtestingfx/issues/22) for custom arrays |
+| Indicators | Numeric arrays, callback slicing, and warmup | [#20](https://github.com/KhizarImran/backtestingfx/issues/20) for the full indicator contract |
+| Orders | Funded whole-unit market entries and explicit exits, with optional finalization | [#24](https://github.com/KhizarImran/backtestingfx/issues/24) for live orders, contingent exits with `trade_on_close`, and cancellation. [#62](https://github.com/KhizarImran/backtestingfx/issues/62) for fractional buying power and the default order size. |
+| Broker | Zero costs. Entry orders in one direction at a time. Use sizes that stay within buying power at execution. | [#63](https://github.com/KhizarImran/backtestingfx/issues/63) for costs, [#64](https://github.com/KhizarImran/backtestingfx/issues/64) for hedging and netting, [#65](https://github.com/KhizarImran/backtestingfx/issues/65) for buying-power checks and insolvency |
+| Results and optimization | Four numeric results and a deterministic parameter grid | [#27](https://github.com/KhizarImran/backtestingfx/issues/27), [#28](https://github.com/KhizarImran/backtestingfx/issues/28), [#32](https://github.com/KhizarImran/backtestingfx/issues/32), [#33](https://github.com/KhizarImran/backtestingfx/issues/33) |
+| Plotting and helpers | Strategy code can use helpers from an installed backtesting.py package | [#29](https://github.com/KhizarImran/backtestingfx/issues/29), [#67](https://github.com/KhizarImran/backtestingfx/issues/67), [#68](https://github.com/KhizarImran/backtestingfx/issues/68), [#69](https://github.com/KhizarImran/backtestingfx/issues/69) |
+
+The top-level `backtestingfx` API provides FX lot sizing, quote conversion,
+swaps, and configurable maintenance margin. Its `data_mode="reference"`
+option changes how it reads data. Use `backtestingfx.compat` for the
+strategy API described above.
 
 ## Reproducibility
 
