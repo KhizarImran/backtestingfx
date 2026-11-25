@@ -250,13 +250,16 @@ class _Adapter:
         self._index = min(warmup + 1, max(len(bars), 1))
         return self._index
 
-    def next(self, bar, broker):
+    def _advance(self, bar, broker):
         self._strategy._bar = bar
         self._strategy._broker = broker
         self._strategy._index = self._index if self._snapshot is None else bar.timestamp
         self._index += 1
         if self._snapshot is not None or self._strategy._queued_execution:
             self._strategy._data_view._set_length(self._strategy._index + 1)
+
+    def next(self, bar, broker):
+        self._advance(bar, broker)
         self._strategy.next()
 
 
@@ -420,6 +423,9 @@ class Backtest:
         if self._strategy_class is None:
             raise ValueError("Backtest needs a strategy_class to run(); use optimize() for signal functions")
 
+        return self._run_strategy(self._strategy_class, _Adapter)
+
+    def _run_strategy(self, make_strategy, adapter):
         self._stats = None
         self._report_df = None
         self._report_timestamps = None
@@ -428,8 +434,8 @@ class Backtest:
         snapshot = ReferenceSnapshot(report_df) if self._data_mode is InputMode.REFERENCE else None
         columns = self._bar_columns(report_df)
         engine = self._engine(report_df, columns)
-        strategy = self._strategy_class()
-        stats = engine.run(_Adapter(strategy, snapshot))
+        strategy = make_strategy()
+        stats = engine.run(adapter(strategy, snapshot))
         if snapshot is not None or self._execution_timing is not None:
             strategy._data_view._set_length(len(report_df))
         if self._execution_timing is not None and not self._execution_timing[1] and stats.open_positions:
